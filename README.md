@@ -1,89 +1,60 @@
 # Nexo Futuro
 
-Prototipo de una experiencia comercial y educativa que convierte una primera conversación en contexto útil para un ejecutivo, con consentimiento y decisión humana antes de actuar.
+Nexo Futuro es un prototipo web local que convierte una conversación inicial en aprendizaje, contexto comercial y una acción para revisar por un ejecutivo.
 
-## Recorrido del producto
+## Qué incluye
 
-```text
-Prospecto
-  → Orientación guiada
-  → Perfil y puntuación de prioridad
-  → Futuro Academy + quiz
-  → Consentimiento para registrar interés
-  → CRM del ejecutivo
-  → Acción recomendada y aprobación humana
-```
+- Orientación guiada para prospectos B2C o B2B.
+- Perfil y prioridad comercial explicable.
+- Futuro Academy con lección, fuente, quiz y consentimiento.
+- CRM de ejemplo con resumen, objeción y decisión humana sobre la siguiente acción.
 
-## Vistas incluidas en el prototipo
+## Ejecutarlo en tu computador
 
-| Vista | Propósito | Ejemplo que muestra |
-| --- | --- | --- |
-| Inicio | Explica el valor de Nexo Futuro y orienta a cada tipo de usuario. | La conversación se transforma en aprendizaje y una oportunidad. |
-| Orientación | El prospecto responde preguntas sin completar un formulario tradicional. | Tipo B2C/B2B, objetivo, experiencia, presupuesto y momento para comenzar. |
-| Futuro Academy | Enseña con contenido aprobado, fuente, quiz y solicitud de consentimiento. | Diferencia entre ahorrar e invertir. |
-| CRM | Permite al ejecutivo priorizar, comprender y decidir. | Carlos Mendoza, prioridad 80/100 y propuesta de reunión. |
+### 1. Instala Node.js
 
-## Diseño del producto final
+Descarga e instala la versión LTS de Node.js desde [nodejs.org](https://nodejs.org/). Después de instalarlo, cierra y vuelve a abrir la terminal.
 
-El prototipo usa la navegación interna para recorrer todo el flujo. Al convertirlo en MVP, cada vista se separará en estas rutas:
+### 2. Abre una terminal en esta carpeta
 
-```text
-/                 Página principal
-/orientacion      Conversación para prospectos
-/academy          Tutor y ruta educativa
-/login            Acceso del ejecutivo
-/crm              Panel privado de oportunidades
-/crm/leads/[id]   Ficha individual del lead
-```
+En Windows puedes abrir la carpeta `Hackatoon`, hacer clic derecho y seleccionar **Abrir en Terminal**.
 
-## Modelo de datos propuesto
-
-```text
-leads
-  id, nombre, tipo, objetivo, experiencia, presupuesto, urgencia,
-  puntaje, prioridad, etapa, creado_en
-
-conversations
-  id, lead_id, autor, mensaje, creado_en
-
-learning_interests
-  id, lead_id, tema, resultado_quiz, consentimiento, creado_en
-
-recommended_actions
-  id, lead_id, propuesta, justificacion, estado, decision_ejecutivo
-```
-
-## Principios de negocio ya representados
-
-- Una sola aplicación con vista pública para el prospecto y vista privada para el ejecutivo.
-- La puntuación es explicable: interés, perfil y plazo producen una prioridad visible para el ejecutivo.
-- El tutor muestra una fuente, realiza un quiz y no guarda el interés educativo sin consentimiento.
-- La IA recomienda una siguiente acción, pero el ejecutivo puede aprobarla, editarla o rechazarla.
-- La demostración usa a Carlos Mendoza como caso B2C de punta a punta.
-
-## Siguiente implementación técnica
-
-1. Separar las vistas en las rutas indicadas.
-2. Persistir los datos con Supabase o Cloudflare D1.
-3. Proteger `/crm` con autenticación y roles de ejecutivo.
-4. Conectar el orquestador de IA para interpretar texto libre, generar el resumen y detectar objeciones.
-5. Guardar el historial de decisiones y crear la integración real o simulada de reuniones.
-
-## GitHub
-
-El proyecto ya está preparado como repositorio local. Cuando exista el repositorio remoto, se puede enlazar desde este directorio y publicar la rama principal. El nombre sugerido es `nexo-futuro`.
-
-```bash
-git remote add origin https://github.com/TU-USUARIO/nexo-futuro.git
-git branch -M main
-git push -u origin main
-```
-
-## Desarrollo local
-
-Requiere Node.js 22.13 o superior.
+### 3. Instala las dependencias
 
 ```bash
 npm install
+```
+
+### 4. Inicia la aplicación
+
+```bash
 npm run dev
 ```
+
+### 5. Ábrela en el navegador
+
+Visita:
+
+```text
+http://localhost:3000
+```
+
+La aplicación se ejecuta solo en tu computador. Para detenerla, vuelve a la terminal y presiona `Ctrl + C`.
+
+## Estructura principal
+
+```text
+app/page.tsx       Interfaz y flujo interactivo
+app/globals.css    Estilos visuales
+app/layout.tsx     Metadatos generales
+public/og.png      Imagen para vista previa al compartir
+```
+
+## Próximos pasos opcionales
+
+Cuando quieras convertir el prototipo en un producto real, puedes agregar:
+
+1. Rutas separadas para orientación, Academy y CRM.
+2. Una base de datos para leads, conversaciones y decisiones.
+3. Autenticación propia para ejecutivos.
+4. Integración con un modelo de IA o con un CRM externo.

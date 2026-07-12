@@ -1,5 +1,3 @@
-@import "tailwindcss";
-
 :root { --ink:#172036; --muted:#68728a; --line:#e7eaf1; --paper:#fffefa; --lilac:#7467dc; --lilac-dark:#5548bf; --lavender:#f0edff; --mint:#e8f7ef; --green:#168358; --orange:#ee8547; --orange-soft:#fff0e6; }
 * { box-sizing:border-box; }
 html { background:#fbfbfd; }

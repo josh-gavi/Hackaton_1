@@ -5,7 +5,7 @@ import * as schema from "./schema";
 export function getDb() {
   if (!env.DB) {
     throw new Error(
-      "Cloudflare D1 binding `DB` is unavailable. Set the `d1` field in .openai/hosting.json to `DB` or let your control plane inject the real binding values before using the database."
+      "La conexión de base de datos `DB` no está disponible. Configura una base de datos antes de usarla."
     );
   }
 
