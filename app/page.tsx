@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import type { User } from "@supabase/supabase-js";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 type Screen = "inicio" | "chat" | "academy" | "login" | "crm";
+type ExecutiveRole = "administrador" | "executive";
+type ExecutiveAccess = { id: string; fullName: string; role: ExecutiveRole };
 
 const chatQuestions = [
   {
@@ -60,7 +61,7 @@ function Icon({ children }: { children: string }) {
 }
 
 export default function Home() {
-  const [user, setUser] = useState<User | null>(null);
+  const [executiveAccess, setExecutiveAccess] = useState<ExecutiveAccess | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState("");
@@ -76,6 +77,29 @@ export default function Home() {
 
   const score = useMemo(() => (responses.length >= 5 ? 80 : 0), [responses]);
   const completedQuiz = quizAnswers.length === quiz.length;
+  const executiveLabel = executiveAccess?.role === "administrador" ? "Administrador" : "Ejecutivo";
+  const executiveFirstName = executiveAccess?.fullName.split(" ")[0] || "ejecutivo";
+  const executiveInitials = executiveAccess?.fullName
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase() || "EX";
+
+  const verifyExecutiveAccess = useCallback(async (accessToken: string) => {
+    try {
+      const response = await fetch("/api/auth/session", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (!response.ok) return null;
+      const data = (await response.json()) as { user?: ExecutiveAccess };
+      return data.user ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
 
   useEffect(() => {
     const requestedScreen = new URLSearchParams(window.location.search).get("screen");
@@ -95,7 +119,7 @@ export default function Home() {
       window.location.assign("/orientacion");
       return;
     }
-    if (next === "crm" && !user) {
+    if (next === "crm" && !executiveAccess) {
       setScreen("login");
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
@@ -130,7 +154,7 @@ export default function Home() {
     setAuthLoading(true);
     setAuthError("");
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     setAuthLoading(false);
     if (error) {
@@ -138,29 +162,38 @@ export default function Home() {
       return;
     }
 
+    const access = data.session ? await verifyExecutiveAccess(data.session.access_token) : null;
+    if (!access) {
+      await supabase.auth.signOut();
+      setAuthError("Tu cuenta no tiene permiso para acceder al CRM.");
+      return;
+    }
+
     setEmail("");
     setPassword("");
+    setExecutiveAccess(access);
     goTo("crm");
   };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    setExecutiveAccess(null);
     goTo("inicio");
   };
 
   useEffect(() => {
     const loadSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
+      setExecutiveAccess(session ? await verifyExecutiveAccess(session.access_token) : null);
     };
 
     void loadSession();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      setExecutiveAccess(session ? await verifyExecutiveAccess(session.access_token) : null);
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [verifyExecutiveAccess]);
 
   return (
     <main>
@@ -174,8 +207,8 @@ export default function Home() {
           <button className={screen === "chat" ? "active" : ""} onClick={() => goTo("chat")}>Orientación</button>
           <button className={screen === "academy" ? "active" : ""} onClick={() => goTo("academy")}>Academy</button>
         </div>
-        <button className="small-cta" onClick={() => goTo(user ? "crm" : "login")}>
-          <Icon>▦</Icon> {user ? "Ir al CRM" : "Acceso ejecutivo"}
+        <button className="small-cta" onClick={() => goTo(executiveAccess ? "crm" : "login")}>
+          <Icon>▦</Icon> {executiveAccess ? "Ir al CRM" : "Acceso ejecutivo"}
         </button>
       </nav>
 
@@ -318,7 +351,7 @@ export default function Home() {
         </section>
       )}
 
-      {screen === "crm" && !user && (
+      {screen === "crm" && !executiveAccess && (
         <section className="login-screen">
           <div className="login-card">
             <p className="eyebrow">ACCESO RESTRINGIDO</p>
@@ -329,9 +362,9 @@ export default function Home() {
         </section>
       )}
 
-      {screen === "crm" && user && (
+      {screen === "crm" && executiveAccess && (
         <section className="crm-screen">
-          <header className="crm-header"><div><p className="eyebrow">VISTA PRIVADA · CRM</p><h1>Buenos días, Valeria</h1><p>Estas son las oportunidades que requieren atención hoy.</p></div><div className="crm-actions"><button className="search-button">⌕ Buscar</button><button className="search-button" onClick={handleLogout}>Cerrar sesión</button><button className="profile-avatar">VR</button></div></header>
+          <header className="crm-header"><div><p className="eyebrow">VISTA PRIVADA · CRM · {executiveLabel}</p><h1>Buenos días, {executiveFirstName}</h1><p>Estas son las oportunidades que requieren atención hoy.</p></div><div className="crm-actions"><button className="search-button">⌕ Buscar</button><button className="search-button" onClick={handleLogout}>Cerrar sesión</button><button className="profile-avatar">{executiveInitials}</button></div></header>
           <div className="metric-grid"><Metric value="12" label="Leads nuevos" trend="+3 esta semana" /><Metric value="4" label="Prioridad alta" trend="Requieren atención" accent="orange" /><Metric value="3" label="Acciones pendientes" trend="Por revisar hoy" accent="blue" /><Metric value="68%" label="Ruta educativa" trend="Tasa de finalización" accent="green" /></div>
           <div className="crm-layout">
             <div className="leads-area"><div className="leads-heading"><div><h2>Oportunidades</h2><p>Actualizado hace un momento</p></div><button className="filter-button">☷ Filtrar</button></div><div className="pipeline-tabs"><button className="active">Todos <span>12</span></button><button>Nuevos <span>5</span></button><button>Calificados <span>4</span></button><button>En seguimiento <span>3</span></button></div><div className="lead-list"><LeadRow selected name="Carlos Mendoza" initials="CM" type="B2C · Personal" priority="Alta" score="80" activity="Completó la ruta educativa" time="Hace 4 min" /><LeadRow name="Andrea López" initials="AL" type="B2B · Empresa" priority="Media" score="58" activity="Solicitó información para su equipo" time="Hace 21 min" /><LeadRow name="Empresa Nova" initials="EN" type="B2B · 200 colaboradores" priority="Alta" score="85" activity="Pendiente de contacto" time="Hace 45 min" /><LeadRow name="Sofía Ramírez" initials="SR" type="B2C · Personal" priority="Media" score="62" activity="Leyó material educativo" time="Ayer" /></div>{showAllLeads ? <p className="more-leads">Mostrando 12 oportunidades activas.</p> : <button className="see-more" onClick={() => setShowAllLeads(true)}>Ver todas las oportunidades <span>→</span></button>}</div>
