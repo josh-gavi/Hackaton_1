@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { User } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
 
-type Screen = "inicio" | "chat" | "academy" | "crm";
+type Screen = "inicio" | "chat" | "academy" | "login" | "crm";
 
 const chatQuestions = [
   {
@@ -58,6 +60,11 @@ function Icon({ children }: { children: string }) {
 }
 
 export default function Home() {
+  const [user, setUser] = useState<User | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
   const [screen, setScreen] = useState<Screen>("inicio");
   const [chatStep, setChatStep] = useState(0);
   const [responses, setResponses] = useState<string[]>([]);
@@ -96,6 +103,56 @@ export default function Home() {
     goTo("inicio");
   };
 
+  const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    setAuthLoading(true);
+    setAuthError("");
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    setAuthLoading(false);
+
+    if (error) {
+      setAuthError("Correo o contraseña incorrectos.");
+      return;
+    }
+
+    setEmail("");
+    setPassword("");
+    goTo("crm");
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    goTo("inicio");
+  };
+
+  useEffect(() => {
+    const loadSession = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      setUser(session?.user ?? null);
+    };
+
+    loadSession();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
   return (
     <main>
       <nav className="topbar" aria-label="Navegación principal">
@@ -108,8 +165,12 @@ export default function Home() {
           <button className={screen === "chat" ? "active" : ""} onClick={() => goTo("chat")}>Orientación</button>
           <button className={screen === "academy" ? "active" : ""} onClick={() => goTo("academy")}>Academy</button>
         </div>
-        <button className="small-cta" onClick={() => goTo("crm")}>
-          <Icon>▦</Icon> Acceso ejecutivo
+        <button
+          className="small-cta"
+          onClick={() => goTo(user ? "crm" : "login")}
+        >
+          <Icon>▦</Icon>
+          {user ? "Ir al CRM" : "Acceso ejecutivo"}
         </button>
       </nav>
 
@@ -121,7 +182,7 @@ export default function Home() {
             <p className="hero-text">Nexo Futuro acompaña a cada persona desde su primera pregunta hasta la orientación adecuada, sin perder el contexto en el camino.</p>
             <div className="hero-actions">
               <button className="primary-button" onClick={() => goTo("chat")}>Comenzar mi orientación <span>→</span></button>
-              <button className="text-button" onClick={() => goTo("crm")}>Ver CRM de ejemplo <span>↗</span></button>
+              <button className="text-button" onClick={() => goTo(user ? "crm" : "login")}>Ver CRM de ejemplo <span>↗</span></button>
             </div>
             <div className="trust-row">
               <div className="avatars"><i>J</i><i>M</i><i>A</i><i>R</i></div>
@@ -209,15 +270,63 @@ export default function Home() {
               {quizStep === -1 && <><p className="eyebrow">LECCIÓN ACTUAL</p><h1>Ahorrar e invertir: no son lo mismo.</h1><p className="lesson-copy">Ahorrar es separar y conservar dinero para usarlo después. Invertir es usar recursos buscando que crezcan con el tiempo, teniendo en cuenta que el resultado puede variar.</p><div className="source-box"><span className="source-icon">⌑</span><div><small>CONTENIDO APROBADO</small><b>Introducción a las inversiones</b><p>Futuro Academy · Página 3</p></div><span className="verified">✓ Fuente verificada</span></div><button className="primary-button" onClick={() => setQuizStep(0)}>Comprobar lo aprendido <span>→</span></button></>}
               {quizStep >= 0 && !completedQuiz && <div className="quiz-box"><div className="quiz-progress"><span>QUIZ · {quizStep + 1} DE 3</span><div><i style={{ width: `${((quizStep + 1) / 3) * 100}%` }} /></div></div><h3>{quiz[quizStep].question}</h3><div className="answer-list">{quiz[quizStep].answers.map((answer, index) => <button key={answer} onClick={() => selectQuizAnswer(index)}><span>{String.fromCharCode(65 + index)}</span>{answer}</button>)}</div></div>}
               {completedQuiz && consent === "pending" && <div className="consent-box"><span className="celebrate">✦</span><p className="eyebrow">QUIZ COMPLETADO</p><h3>¡Muy bien! Completaste tu introducción.</h3><p>¿Autorizas guardar <b>“Introducción a las inversiones”</b> como un interés en tu perfil para ofrecerte contenido más relevante?</p><div><button className="primary-button" onClick={() => setConsent("accepted")}>Sí, autorizo</button><button className="outline-button" onClick={() => setConsent("declined")}>No guardar</button></div></div>}
-              {completedQuiz && consent !== "pending" && <div className="consent-box success"><span className="celebrate">✓</span><p className="eyebrow">{consent === "accepted" ? "CONSENTIMIENTO OTORGADO" : "PREFERENCIA RESPETADA"}</p><h3>{consent === "accepted" ? "Tu interés fue guardado de forma segura." : "No guardaremos este tema en tu perfil."}</h3><p>Tu orientación ya está lista para que un asesor pueda continuar contigo con el contexto correcto.</p><button className="primary-button" onClick={() => goTo("crm")}>Ver cómo llega al CRM <span>→</span></button></div>}
+              {completedQuiz && consent !== "pending" && <div className="consent-box success"><span className="celebrate">✓</span><p className="eyebrow">{consent === "accepted" ? "CONSENTIMIENTO OTORGADO" : "PREFERENCIA RESPETADA"}</p><h3>{consent === "accepted" ? "Tu interés fue guardado de forma segura." : "No guardaremos este tema en tu perfil."}</h3><p>Tu orientación ya está lista para que un asesor pueda continuar contigo con el contexto correcto.</p><button className="primary-button" onClick={() => goTo(user ? "crm" : "login")}>Ver cómo llega al CRM <span>→</span></button></div>}
             </article>
           </div>
         </section>
       )}
 
-      {screen === "crm" && (
+      {screen === "login" && (
+        <section className="login-screen">
+          <div className="login-card">
+            <p className="eyebrow">Portal ejecutivo</p>
+            <h2>Acceso privado</h2>
+            <p>Ingresa con tu correo y contraseña para ver el CRM ejecutivo.</p>
+            <form className="login-form" onSubmit={handleLogin}>
+              <label>
+                Correo
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  required
+                />
+              </label>
+              <label>
+                Contraseña
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
+                />
+              </label>
+              {authError && <p className="auth-error">{authError}</p>}
+              <button className="primary-button" type="submit" disabled={authLoading}>
+                {authLoading ? "Ingresando..." : "Iniciar sesión"}
+              </button>
+              <button type="button" className="text-button" onClick={() => goTo("inicio")}>
+                Volver al inicio
+              </button>
+            </form>
+          </div>
+        </section>
+      )}
+
+      {screen === "crm" && !user && (
+        <section className="login-screen">
+          <div className="login-card">
+            <p className="eyebrow">Acceso restringido</p>
+            <h2>Debe iniciar sesión</h2>
+            <p>Para acceder al CRM ejecutivo necesitas iniciar sesión con tu cuenta.</p>
+            <button className="primary-button" onClick={() => goTo("login")}>Iniciar sesión</button>
+          </div>
+        </section>
+      )}
+
+      {screen === "crm" && user && (
         <section className="crm-screen">
-          <header className="crm-header"><div><p className="eyebrow">VISTA PRIVADA · CRM</p><h1>Buenos días, Valeria</h1><p>Estas son las oportunidades que requieren atención hoy.</p></div><div className="crm-actions"><button className="search-button">⌕ Buscar</button><button className="profile-avatar">VR</button></div></header>
+          <header className="crm-header"><div><p className="eyebrow">VISTA PRIVADA · CRM</p><h1>Buenos días, Valeria</h1><p>Estas son las oportunidades que requieren atención hoy.</p></div><div className="crm-actions"><button className="search-button">⌕ Buscar</button><button className="search-button" onClick={handleLogout}>Cerrar sesión</button><button className="profile-avatar">VR</button></div></header>
           <div className="metric-grid"><Metric value="12" label="Leads nuevos" trend="+3 esta semana" /><Metric value="4" label="Prioridad alta" trend="Requieren atención" accent="orange" /><Metric value="3" label="Acciones pendientes" trend="Por revisar hoy" accent="blue" /><Metric value="68%" label="Ruta educativa" trend="Tasa de finalización" accent="green" /></div>
           <div className="crm-layout">
             <div className="leads-area"><div className="leads-heading"><div><h2>Oportunidades</h2><p>Actualizado hace un momento</p></div><button className="filter-button">☷ Filtrar</button></div><div className="pipeline-tabs"><button className="active">Todos <span>12</span></button><button>Nuevos <span>5</span></button><button>Calificados <span>4</span></button><button>En seguimiento <span>3</span></button></div><div className="lead-list"><LeadRow selected name="Carlos Mendoza" initials="CM" type="B2C · Personal" priority="Alta" score="80" activity="Completó la ruta educativa" time="Hace 4 min" /><LeadRow name="Andrea López" initials="AL" type="B2B · Empresa" priority="Media" score="58" activity="Solicitó información para su equipo" time="Hace 21 min" /><LeadRow name="Empresa Nova" initials="EN" type="B2B · 200 colaboradores" priority="Alta" score="85" activity="Pendiente de contacto" time="Hace 45 min" /><LeadRow name="Sofía Ramírez" initials="SR" type="B2C · Personal" priority="Media" score="62" activity="Leyó material educativo" time="Ayer" /></div>{showAllLeads ? <p className="more-leads">Mostrando 12 oportunidades activas.</p> : <button className="see-more" onClick={() => setShowAllLeads(true)}>Ver todas las oportunidades <span>→</span></button>}</div>
@@ -250,3 +359,5 @@ function LeadRow({ selected = false, name, initials, type, priority, score, acti
 function Timeline({ time, text, active = false }: { time: string; text: string; active?: boolean }) {
   return <div className="timeline-row"><time>{time}</time><span className={active ? "active" : ""} /><p>{text}</p></div>;
 }
+
+
