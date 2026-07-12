@@ -1,6 +1,6 @@
 # Nexo Futuro
 
-Nexo Futuro es un prototipo web local que convierte una conversación inicial en aprendizaje, contexto comercial y una acción para revisar por un ejecutivo.
+Nexo Futuro es un prototipo web local creado con Next.js que convierte una conversación inicial en aprendizaje, contexto comercial y una acción para revisar por un ejecutivo.
 
 ## Qué incluye
 
@@ -47,7 +47,7 @@ La aplicación se ejecuta solo en tu computador. Para detenerla, vuelve a la ter
 app/page.tsx       Interfaz y flujo interactivo
 app/globals.css    Estilos visuales
 app/layout.tsx     Metadatos generales
-public/og.png      Imagen para vista previa al compartir
+next.config.ts     Configuración de Next.js
 ```
 
 ## Próximos pasos opcionales
