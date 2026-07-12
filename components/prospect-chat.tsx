@@ -88,6 +88,10 @@ export function ProspectChat() {
   }
 
   function reset() {
+    if (messages.length > 1 && !window.confirm("Se borrará esta orientación y tendrás que empezar de nuevo. ¿Deseas continuar?")) {
+      return;
+    }
+
     setMessages([{ role: "assistant", content: getQuestion(INITIAL_STAGE) }]);
     setProfile({});
     setStage(INITIAL_STAGE);

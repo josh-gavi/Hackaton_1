@@ -17,12 +17,15 @@ export type Lead = {
   phone: string | null;
   company: string | null;
   lead_type: LeadType | null;
+  objective: string | null;
+  experience: string | null;
   budget: number | null;
+  urgency_label: string | null;
   urgency: number | null;
   interest_level: number | null;
   lead_score: number | null;
   status: LeadStatus | null;
-  created_at: string;
+  created_at: string | null;
   updated_at: string;
 };
 

@@ -8,9 +8,29 @@ type GroqCompletion = {
 async function requestGroq(
   messages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
   model: string,
+  jsonMode: boolean = false
 ): Promise<string | null> {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return null;
+
+  type GroqRequestBody = {
+    model: string;
+    messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+    temperature: number;
+    max_completion_tokens: number;
+    response_format?: { type: "json_object" };
+  };
+
+  const body: GroqRequestBody = {
+    model,
+    messages,
+    temperature: 0.35,
+    max_completion_tokens: jsonMode ? 350 : 180,
+  };
+
+  if (jsonMode) {
+    body.response_format = { type: "json_object" };
+  }
 
   try {
     const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -19,13 +39,8 @@ async function requestGroq(
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: 0.35,
-        max_completion_tokens: 180,
-      }),
-      signal: AbortSignal.timeout(7_000),
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(jsonMode ? 10_000 : 7_000), // Damos un poco más de tiempo para JSON
     });
 
     if (!response.ok) return null;
@@ -36,9 +51,74 @@ async function requestGroq(
   }
 }
 
+export async function extractProspectData({
+  transcript,
+  profile,
+  stage,
+}: {
+  transcript: ChatMessage[];
+  profile: ProspectProfile;
+  stage: ProspectStage;
+}): Promise<Partial<ProspectProfile> | null> {
+  // Filtramos solo los mensajes del usuario para evitar que Groq se confunda con sus propias preguntas
+  const userMessages = transcript.filter((msg) => msg.role === "user");
+  const recentTranscript = userMessages.slice(-4);
+
+  const systemPrompt = `Extrae únicamente los datos que el prospecto haya mencionado.
+No inventes nada. Devuelve solamente JSON con esta estructura exacta:
+{
+  "fullName": null,
+  "email": null,
+  "leadType": null,
+  "company": null,
+  "objective": null,
+  "experience": null,
+  "budgetLabel": null,
+  "budgetValue": null,
+  "urgencyLabel": null,
+  "urgencyScore": null,
+  "interestLevel": null
+}
+
+Reglas:
+- "me llamo Joshua Mero" o "Soy Joshua" -> fullName: "Joshua Mero" o "Joshua".
+- Solo asigna leadType si el prospecto expresó claramente "es para mí", "para una empresa", "para mi negocio", "para mi equipo" o una idea equivalente. Nunca asumas B2C solo porque escribió su nombre o habla como una persona.
+- Consulta explícita para sí mismo, familiar o persona -> leadType: "b2c".
+- Consulta explícita para empresa, negocio, organización o equipo -> leadType: "b2b".
+- "unos 400 dólares" -> budgetLabel: "$400", budgetValue: 400.
+- "nunca he invertido" -> experience: "Sin experiencia".
+- Si el objetivo menciona ahorrar, invertir, aprender finanzas, jubilación, comprar una casa, vivienda, auto o vehículo, usa interestLevel: 25.
+- Si expresa un objetivo general pero real, usa interestLevel: 18.
+- "el próximo mes" -> urgencyLabel: "El próximo mes", urgencyScore: 20.
+- "aún no sé", "aun no se", "no sé cuándo podría", "todavía no lo sé" o "no estoy seguro" -> urgencyLabel: "Aún no lo sé", urgencyScore: 5.
+- Si un dato no aparece explícitamente, usa null.
+- Los datos ya confirmados no deben cambiarse. Solo devuelve fullName si aún no existe en el perfil o si el último mensaje dice explícitamente que está corrigiendo su nombre.
+
+Etapa actual: ${stage}
+Perfil ya confirmado: ${JSON.stringify(profile)}`;
+
+  const content = await requestGroq(
+    [
+      { role: "system", content: systemPrompt },
+      ...recentTranscript,
+    ],
+    process.env.GROQ_CHAT_MODEL || "llama-3.1-8b-instant",
+    true // Activamos jsonMode
+  );
+
+  if (!content) return null;
+
+  try {
+    const parsed = JSON.parse(content);
+    return parsed;
+  } catch {
+    // Si Groq falla en entregar un JSON válido, devolvemos null para que actúe el fallback
+    return null;
+  }
+}
+
 /**
- * La IA puede acompañar la conversación, pero el orden de preguntas pertenece
- * al flujo de producto. Así una respuesta creativa nunca cambia de etapa.
+ * La IA puede acompañar la conversación...
  */
 export function composeAssistantMessage(
   acknowledgement: string | null,
@@ -58,12 +138,10 @@ export function composeAssistantMessage(
 
 export async function generateAssistantReply({
   transcript,
-  profile,
   nextStage,
   accepted,
 }: {
   transcript: ChatMessage[];
-  profile: ProspectProfile;
   nextStage: ProspectStage;
   accepted: boolean;
 }): Promise<{ content: string; provider: "groq" | "guided" }> {
@@ -77,7 +155,7 @@ export async function generateAssistantReply({
     return { content: correction, provider: "guided" };
   }
 
-  const requiredQuestion = getQuestion(nextStage, profile.fullName);
+  const requiredQuestion = getQuestion(nextStage);
   const recentTranscript = transcript.slice(-8);
   const content = await requestGroq(
     [
@@ -92,7 +170,7 @@ export async function generateAssistantReply({
         content: "Escribe únicamente la frase breve de reconocimiento.",
       },
     ],
-    process.env.GROQ_CHAT_MODEL || "llama-3.1-8b-instant",
+    process.env.GROQ_CHAT_MODEL || "llama-3.1-8b-instant"
   );
 
   return {
@@ -111,7 +189,7 @@ export async function generateLeadSummary(
       {
         role: "system",
         content:
-          "Resume en español y en máximo 70 palabras el contexto comercial del prospecto. Incluye objetivo, experiencia, presupuesto, plazo y puntuación. No inventes datos, no recomiendes inversiones y no uses Markdown.",
+          "Resume en español y en máximo 70 palabras el contexto comercial del prospecto. El objeto profile es la única fuente de verdad para objetivo, experiencia, presupuesto, plazo y puntuación: copia esos datos sin reinterpretarlos ni cambiarlos. No inventes datos, no recomiendes inversiones y no uses Markdown.",
       },
       {
         role: "user",

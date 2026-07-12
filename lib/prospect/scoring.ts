@@ -36,13 +36,10 @@ export function getOptions(stage: ProspectStage): string[] {
   return OPTIONS[stage] ?? [];
 }
 
-export function getQuestion(stage: ProspectStage, name?: string): string {
-  const firstName = name?.trim().split(/\s+/)[0];
-  const greeting = firstName ? `${firstName}, ` : "";
-
+export function getQuestion(stage: ProspectStage): string {
   const questions: Record<ProspectStage, string> = {
     name: "¡Hola! Soy Nexo. Para comenzar, ¿cómo te llamas?",
-    lead_type: `${greeting}¿esta orientación es para ti o para una empresa?`,
+    lead_type: "¿Esta orientación es para ti o para una empresa?",
     company: "¿Cuál es el nombre de la empresa?",
     objective: "¿Cuál es el principal objetivo que te gustaría alcanzar?",
     experience: "¿Qué experiencia tienes actualmente con inversiones?",
@@ -175,4 +172,95 @@ export function calculateScore(profile: ProspectProfile): ScoreBreakdown {
     priority,
     explanation: `Interés ${interest}/25, presupuesto ${budget}/25, afinidad ${profileFit}/25 y urgencia ${urgency}/25.`,
   };
+}
+
+function inferInterestLevel(objective: string): number {
+  return /crecer|invert|jubil|ahorr|educación|educacion|casa|vivienda|domicilio|hogar|auto|vehículo|vehiculo|finanzas|dinero/i.test(objective)
+    ? 25
+    : 18;
+}
+
+function inferUrgencyScore(label: string): number {
+  const normalized = label.toLowerCase();
+  if (normalized.includes("este mes") || normalized.includes("ahora") || normalized.includes("semana")) return 25;
+  if (normalized.includes("próximo") || normalized.includes("proximo")) return 20;
+  if (normalized.includes("no sé") || normalized.includes("no se") || normalized.includes("aún") || normalized.includes("aun")) return 5;
+  return 12;
+}
+
+function validScore(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.min(25, value))
+    : undefined;
+}
+
+export function mergeProspectProfile(
+  current: ProspectProfile,
+  extracted: Partial<ProspectProfile>
+): ProspectProfile {
+  const profile = { ...current };
+
+  // El nombre se confirma una sola vez. Así un mensaje posterior no puede
+  // convertir una palabra común en un nuevo nombre del prospecto.
+  if (!profile.fullName && extracted.fullName && typeof extracted.fullName === "string") {
+    const cleanName = extracted.fullName.trim();
+    if (cleanName.length >= 2 && !/\d/.test(cleanName)) {
+      profile.fullName = cleanName;
+    }
+  }
+
+  // 2. Validar email
+  if (extracted.email && typeof extracted.email === "string") {
+    const cleanEmail = extracted.email.toLowerCase().trim();
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      profile.email = cleanEmail;
+    }
+  }
+
+  // 3. Validar leadType
+  if (extracted.leadType === "b2b" || extracted.leadType === "b2c") {
+    profile.leadType = extracted.leadType;
+  }
+
+  // 4. Strings básicos (Company, Objective, Experience, Labels)
+  if (extracted.company && typeof extracted.company === "string") {
+    profile.company = extracted.company.trim();
+  }
+
+  if (extracted.objective && typeof extracted.objective === "string") {
+    profile.objective = extracted.objective.trim();
+  }
+
+  if (extracted.experience && typeof extracted.experience === "string") {
+    profile.experience = extracted.experience.trim();
+  }
+
+  if (extracted.budgetLabel && typeof extracted.budgetLabel === "string") {
+    profile.budgetLabel = extracted.budgetLabel.trim();
+  }
+
+  if (extracted.urgencyLabel && typeof extracted.urgencyLabel === "string") {
+    profile.urgencyLabel = extracted.urgencyLabel.trim();
+  }
+
+  // 5. Validar números
+  if (typeof extracted.budgetValue === "number" && extracted.budgetValue >= 0) {
+    profile.budgetValue = extracted.budgetValue;
+  }
+
+  const urgencyScore = validScore(extracted.urgencyScore);
+  if (urgencyScore !== undefined) {
+    profile.urgencyScore = urgencyScore;
+  } else if (extracted.urgencyLabel && typeof extracted.urgencyLabel === "string") {
+    profile.urgencyScore = inferUrgencyScore(extracted.urgencyLabel);
+  }
+
+  const interestLevel = validScore(extracted.interestLevel);
+  if (interestLevel !== undefined) {
+    profile.interestLevel = interestLevel;
+  } else if (extracted.objective && typeof extracted.objective === "string") {
+    profile.interestLevel = inferInterestLevel(extracted.objective);
+  }
+
+  return profile;
 }

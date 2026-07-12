@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 
-import { generateAssistantReply, generateLeadSummary } from "@/lib/prospect/groq";
+import { generateAssistantReply, generateLeadSummary, extractProspectData } from "@/lib/prospect/groq";
 import {
   applyAnswer,
   calculateScore,
   getNextStage,
   getOptions,
+  mergeProspectProfile,
 } from "@/lib/prospect/scoring";
 import { persistProspect } from "@/lib/prospect/persistence";
 import type { ChatMessage, ProspectProfile, ProspectStage } from "@/lib/prospect/types";
@@ -69,6 +70,7 @@ export async function POST(request: Request) {
     "urgency",
     "email",
   ];
+
   if (!allowedStages.includes(currentStage)) {
     return NextResponse.json({ error: "La etapa de conversación no es válida." }, { status: 400 });
   }
@@ -79,14 +81,39 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Falta el mensaje del prospecto." }, { status: 400 });
   }
 
-  const result = applyAnswer(currentProfile, currentStage, lastMessage.content);
-  const nextStage = result.accepted ? getNextStage(result.profile) : currentStage;
+  // 1. Intentamos extraer los datos con Groq en formato JSON
+  const extraction = await extractProspectData({
+    transcript: body.messages,
+    profile: currentProfile,
+    stage: currentStage,
+  });
+
+  let profile: ProspectProfile;
+  let accepted: boolean;
+
+  if (extraction) {
+    // Si Groq respondió bien, fusionamos los datos validados
+    profile = mergeProspectProfile(currentProfile, extraction);
+
+    // Validamos que el dato requerido por la etapa actual realmente se haya capturado
+    // Si la etapa cambia, significa que la extracción resolvió la pregunta actual.
+    const stageAfterMerge = getNextStage(profile);
+    accepted = stageAfterMerge !== currentStage;
+  } else {
+    // Fallback: Si Groq falla o devuelve null, utilizamos el flujo determinista antiguo
+    const fallbackResult = applyAnswer(currentProfile, currentStage, lastMessage.content);
+    profile = fallbackResult.profile;
+    accepted = fallbackResult.accepted;
+  }
+
+  const nextStage = getNextStage(profile);
   const completed = nextStage === "complete";
+
+  // 2. Generamos la respuesta conversacional
   const reply = await generateAssistantReply({
     transcript: body.messages,
-    profile: result.profile,
     nextStage,
-    accepted: result.accepted,
+    accepted,
   });
 
   let score = null;
@@ -99,17 +126,17 @@ export async function POST(request: Request) {
   let provider = reply.provider;
 
   if (completed) {
-    score = calculateScore(result.profile);
+    score = calculateScore(profile);
     const generatedSummary = await generateLeadSummary(
       [...body.messages, { role: "assistant", content: reply.content }],
-      result.profile,
+      profile,
       score.total,
     );
     summary = generatedSummary.content;
     if (generatedSummary.provider === "groq") provider = "groq";
     persistence = await persistProspect({
       messages: [...body.messages, { role: "assistant", content: reply.content }],
-      profile: result.profile,
+      profile,
       score,
       summary,
     });
@@ -117,7 +144,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     assistantMessage: reply.content,
-    profile: result.profile,
+    profile,
     stage: nextStage,
     options: getOptions(nextStage),
     completed,
