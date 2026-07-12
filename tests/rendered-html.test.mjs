@@ -11,6 +11,7 @@ test("keeps the product journey in the app source", async () => {
 
   assert.match(page, /Encuentra una ruta para comenzar/);
   assert.match(page, /Futuro Academy/);
+  assert.match(page, /Tu tablero de oportunidades/);
   assert.match(page, /Siguiente acción recomendada/i);
   assert.match(page, /Aprobar/);
   assert.match(page, /Rechazar/);
