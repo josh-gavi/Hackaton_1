@@ -18,3 +18,19 @@ test("keeps the product journey in the app source", async () => {
   assert.match(css, /--lilac:#7467dc/);
   assert.doesNotMatch(page, /SkeletonPreview|react-loading-skeleton/);
 });
+
+test("keeps the prospect conversation behind a server API", async () => {
+  const [orientation, component, route, scoring] = await Promise.all([
+    readFile(new URL("../app/orientacion/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/prospect-chat.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/prospect/chat/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/prospect/scoring.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(orientation, /VISTA DEL PROSPECTO/);
+  assert.match(component, /\/api\/prospect\/chat/);
+  assert.doesNotMatch(component, /SUPABASE_SERVICE_ROLE_KEY|GROQ_API_KEY/);
+  assert.match(route, /persistProspect/);
+  assert.match(scoring, /calculateScore/);
+  assert.match(scoring, /Interés.*presupuesto.*afinidad.*urgencia/s);
+});

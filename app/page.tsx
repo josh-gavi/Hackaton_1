@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type Screen = "inicio" | "chat" | "academy" | "crm";
 
@@ -70,7 +70,21 @@ export default function Home() {
   const score = useMemo(() => (responses.length >= 5 ? 80 : 0), [responses]);
   const completedQuiz = quizAnswers.length === quiz.length;
 
+  useEffect(() => {
+    const requestedScreen = new URLSearchParams(window.location.search).get("screen");
+    const timer = window.setTimeout(() => {
+      if (requestedScreen === "academy" || requestedScreen === "crm") {
+        setScreen(requestedScreen);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   const goTo = (next: Screen) => {
+    if (next === "chat") {
+      window.location.assign("/orientacion");
+      return;
+    }
     setScreen(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
