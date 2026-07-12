@@ -157,7 +157,7 @@ export function ProspectChat() {
           </form>
         ) : (
           <div className="prospect-complete-actions">
-            <Link className="primary-button" href="/?screen=academy">
+            <Link className="primary-button" href={result?.persistence.leadId ? `/academy?lead_id=${encodeURIComponent(result.persistence.leadId)}` : "/academy"}>
               Continuar con Futuro Academy <span>→</span>
             </Link>
           </div>

@@ -120,6 +120,10 @@ export default function Home() {
       window.location.assign("/orientacion");
       return;
     }
+    if (next === "academy") {
+      window.location.assign("/academy");
+      return;
+    }
     if (next === "crm" && !executiveAccess) {
       setScreen("login");
       window.scrollTo({ top: 0, behavior: "smooth" });
