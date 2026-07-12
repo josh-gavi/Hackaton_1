@@ -75,7 +75,7 @@ lib/supabase/                 Cliente de conexión con Supabase
 
 Cuando quieras convertir el prototipo en un producto real, puedes agregar:
 
-1. Conectar Futuro Academy con Gemini y reutilizar sus respuestas aprobadas.
+1. Conectar Futuro Academy con contenido aprobado y reutilizar sus respuestas.
 2. Completar Supabase Auth y las políticas para administrador y ejecutivo.
 3. Asignar leads y seguimientos desde el CRM interno.
 4. Integrar un CRM externo si el equipo lo necesita.
