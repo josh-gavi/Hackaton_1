@@ -4,7 +4,7 @@ import { academyModules } from "@/lib/academy/approved-content";
 import { saveLearningInterest } from "@/lib/academy/persistence";
 
 export async function POST(request: NextRequest) {
-  let body: { leadId?: unknown; moduleId?: unknown; quizScore?: unknown; consent?: unknown };
+  let body: { leadId?: unknown; moduleId?: unknown; learningPath?: unknown; quizScore?: unknown; consent?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -13,13 +13,14 @@ export async function POST(request: NextRequest) {
 
   const leadId = typeof body.leadId === "string" ? body.leadId : "";
   const academyModule = typeof body.moduleId === "string" ? academyModules.find((item) => item.id === body.moduleId) : undefined;
+  const isInitialRoute = body.learningPath === "fundamentos-inversion";
   const quizScore = typeof body.quizScore === "number" ? Math.max(0, Math.min(3, body.quizScore)) : null;
-  if (!leadId || !academyModule || quizScore === null || body.consent !== true) {
+  if (!leadId || (!academyModule && !isInitialRoute) || quizScore === null || body.consent !== true) {
     return NextResponse.json({ error: "No se pudo registrar el interés educativo." }, { status: 400 });
   }
 
   try {
-    await saveLearningInterest({ leadId, topic: academyModule.title, quizScore });
+    await saveLearningInterest({ leadId, topic: isInitialRoute ? "Ruta guiada: Fundamentos de inversión" : academyModule!.title, quizScore });
     return NextResponse.json({ saved: true });
   } catch {
     return NextResponse.json({ error: "No se pudo guardar el interés educativo." }, { status: 500 });

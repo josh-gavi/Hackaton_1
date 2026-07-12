@@ -5,7 +5,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(request: NextRequest) {
   const leadId = request.nextUrl.searchParams.get("lead_id");
-  const modules = academyModules.map(({ id, title, level, duration, objective, source }) => ({ id, title, level, duration, objective, source }));
+  const modules = academyModules;
 
   if (!leadId) return NextResponse.json({ modules, lead: null });
 
