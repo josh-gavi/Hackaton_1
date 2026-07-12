@@ -6,6 +6,35 @@ import { supabase } from "@/lib/supabase";
 type Screen = "inicio" | "chat" | "academy" | "login" | "crm";
 type ExecutiveRole = "administrador" | "executive";
 type ExecutiveAccess = { id: string; fullName: string; role: ExecutiveRole };
+type AdminLead = {
+  id: string;
+  assigned_user_id: string | null;
+  full_name: string | null;
+  email: string | null;
+  company: string | null;
+  lead_type: "b2b" | "b2c" | null;
+  objective: string | null;
+  experience: string | null;
+  budget: number | null;
+  urgency_label: string | null;
+  urgency: number | null;
+  interest_level: number | null;
+  lead_score: number | null;
+  status: "nuevo" | "calificado" | "en_seguimiento" | "interesado" | "cliente" | "descartado" | null;
+  created_at: string | null;
+};
+type AdminExecutive = {
+  id: string;
+  fullName: string;
+  isActive: boolean;
+  role: string;
+  initials: string;
+};
+
+type AssignmentOption = {
+  id: string;
+  fullName: string;
+};
 
 const chatQuestions = [
   {
@@ -74,6 +103,15 @@ export default function Home() {
   const [consent, setConsent] = useState<"pending" | "accepted" | "declined">("pending");
   const [actionStatus, setActionStatus] = useState<"Pendiente" | "Aprobada" | "Rechazada">("Pendiente");
   const [showAllLeads, setShowAllLeads] = useState(false);
+  const [adminLeads, setAdminLeads] = useState<AdminLead[]>([]);
+  const [adminExecutives, setAdminExecutives] = useState<AdminExecutive[]>([]);
+  const [selectedAdminLeadId, setSelectedAdminLeadId] = useState<string | null>(null);
+  const [adminFilter, setAdminFilter] = useState<"todos" | "sin_asignar" | "alta_prioridad" | "seguimiento">("todos");
+  const [adminSearch, setAdminSearch] = useState("");
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminError, setAdminError] = useState("");
+  const [assignmentLoading, setAssignmentLoading] = useState(false);
+  const [selectedExecutiveId, setSelectedExecutiveId] = useState<string | null>(null);
 
   const score = useMemo(() => (responses.length >= 5 ? 80 : 0), [responses]);
   const completedQuiz = quizAnswers.length === quiz.length;
@@ -102,6 +140,40 @@ export default function Home() {
     }
   }, []);
 
+  const getPriorityLabel = (score: number | null) => {
+    if (score == null) return "No registrado";
+    if (score >= 80) return "Alta";
+    if (score >= 50) return "Media";
+    return "Baja";
+  };
+
+  const getWorkloadStatus = (count: number) => {
+    if (count >= 8) return "Carga alta";
+    if (count >= 4) return "Carga media";
+    return "Disponible";
+  };
+
+  const getWorkloadClass = (count: number) => {
+    if (count >= 8) return "high";
+    if (count >= 4) return "medium";
+    return "available";
+  };
+
+  const formatLeadType = (leadType: string | null) => {
+    if (leadType === "b2b") return "B2B";
+    if (leadType === "b2c") return "B2C";
+    return "No registrado";
+  };
+
+  const formatDate = (value: string | null) => {
+    if (!value) return "No registrado";
+    try {
+      return new Date(value).toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "numeric" });
+    } catch {
+      return "No registrado";
+    }
+  };
+
   useEffect(() => {
     const requestedScreen = new URLSearchParams(window.location.search).get("screen");
     const timer = window.setTimeout(() => {
@@ -114,6 +186,178 @@ export default function Home() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    const loadAdminDashboard = async () => {
+      if (!isAdmin) return;
+
+      setAdminLoading(true);
+      setAdminError("");
+      try {
+        const { data: leadsData, error: leadsError } = await supabase
+          .from("leads")
+          .select(
+            "id, assigned_user_id, full_name, email, company, lead_type, objective, experience, budget, urgency_label, urgency, interest_level, lead_score, status, created_at"
+          );
+        if (leadsError) {
+          console.error("Error cargando leads:", {
+            message: leadsError.message ?? "Error desconocido",
+            code: leadsError.code ?? "Sin código",
+            details: leadsError.details ?? "Sin detalles",
+            hint: leadsError.hint ?? "Sin sugerencia",
+          });
+          throw leadsError;
+        }
+
+        const { data: usersData, error: usersError } = await supabase
+          .from("users")
+          .select("id, full_name, is_active, profiles(nombre)");
+        if (usersError) {
+          console.error("Error cargando ejecutivos:", {
+            message: usersError.message ?? "Error desconocido",
+            code: usersError.code ?? "Sin código",
+            details: usersError.details ?? "Sin detalles",
+            hint: usersError.hint ?? "Sin sugerencia",
+          });
+          throw usersError;
+        }
+
+        const executives = (Array.isArray(usersData) ? usersData : [])
+          .filter(
+            (user) =>
+              user.is_active &&
+              Array.isArray(user.profiles) &&
+              user.profiles[0]?.nombre === "executive"
+          )
+          .map((user) => ({
+            id: user.id,
+            fullName: user.full_name || "Ejecutivo",
+            isActive: Boolean(user.is_active),
+            role: user.profiles?.[0]?.nombre ?? "executive",
+            initials:
+              user.full_name
+                ?.split(" ")
+                .filter(Boolean)
+                .slice(0, 2)
+                .map((part: string) => part[0])
+                .join("")
+                .toUpperCase() || "EX",
+          }));
+
+        setAdminLeads(Array.isArray(leadsData) ? leadsData : []);
+        setAdminExecutives(executives);
+      } catch (error) {
+        const supabaseError = error as {
+          message?: string;
+          code?: string;
+          details?: string;
+          hint?: string;
+        };
+
+        console.error("Error cargando datos administrativos:", {
+          message: supabaseError.message ?? "Error desconocido",
+          code: supabaseError.code ?? "Sin código",
+          details: supabaseError.details ?? "Sin detalles",
+          hint: supabaseError.hint ?? "Sin sugerencia",
+        });
+
+        setAdminError(
+          supabaseError.message ?? "No se pudo cargar la información de administración."
+        );
+      } finally {
+        setAdminLoading(false);
+      }
+    };
+
+    void loadAdminDashboard();
+  }, [isAdmin]);
+
+  const selectedAdminLead = useMemo(
+    () => adminLeads.find((lead) => lead.id === selectedAdminLeadId) ?? null,
+    [adminLeads, selectedAdminLeadId]
+  );
+
+  useEffect(() => {
+    if (!selectedAdminLeadId) {
+      setSelectedExecutiveId(null);
+      return;
+    }
+    const current = adminLeads.find((lead) => lead.id === selectedAdminLeadId);
+    setSelectedExecutiveId(current?.assigned_user_id ?? null);
+  }, [selectedAdminLeadId, adminLeads]);
+
+  const activeExecutivesCount = adminExecutives.length;
+  const leadsTotalCount = adminLeads.length;
+  const leadsNewCount = adminLeads.filter((lead) => lead.status === "nuevo").length;
+  const leadsHighPriorityCount = adminLeads.filter((lead) => lead.lead_score != null && lead.lead_score >= 80).length;
+  const leadsQualifiedCount = adminLeads.filter((lead) => lead.status === "calificado").length;
+  const leadsUnassignedCount = adminLeads.filter((lead) => !lead.assigned_user_id).length;
+  const leadsInFollowUpCount = adminLeads.filter((lead) => lead.status === "en_seguimiento").length;
+
+  const teamSummary = useMemo(
+    () =>
+      adminExecutives.map((exec) => {
+        const leads = adminLeads.filter((lead) => lead.assigned_user_id === exec.id);
+        const count = leads.length;
+        const high = leads.filter((lead) => lead.lead_score != null && lead.lead_score >= 80).length;
+        const following = leads.filter((lead) => lead.status === "en_seguimiento").length;
+        return {
+          ...exec,
+          count,
+          high,
+          following,
+          workload: getWorkloadStatus(count),
+          percentage: Math.min(100, Math.round((count / 10) * 100)),
+        };
+      }),
+    [adminExecutives, adminLeads]
+  );
+
+  const filteredAdminLeads = useMemo(
+    () =>
+      adminLeads.filter((lead) => {
+        const search = adminSearch.trim().toLowerCase();
+        const searchMatch =
+          !search ||
+          [lead.full_name, lead.email, lead.company].some(
+            (value) => typeof value === "string" && value.toLowerCase().includes(search)
+          );
+        const filterMatch =
+          adminFilter === "todos" ||
+          (adminFilter === "sin_asignar" && !lead.assigned_user_id) ||
+          (adminFilter === "alta_prioridad" && lead.lead_score != null && lead.lead_score >= 80) ||
+          (adminFilter === "seguimiento" && lead.status === "en_seguimiento");
+        return searchMatch && filterMatch;
+      }),
+    [adminLeads, adminFilter, adminSearch]
+  );
+
+  const selectedAssignedExecutive = selectedAdminLead?.assigned_user_id
+    ? adminExecutives.find((exec) => exec.id === selectedAdminLead.assigned_user_id) ?? null
+    : null;
+
+  const handleAssignExecutive = async () => {
+    if (!selectedAdminLeadId || !selectedExecutiveId) return;
+    setAssignmentLoading(true);
+    setAdminError("");
+    try {
+      const { error } = await supabase
+        .from("leads")
+        .update({ assigned_user_id: selectedExecutiveId })
+        .eq("id", selectedAdminLeadId);
+      if (error) throw error;
+      setAdminLeads((prev) =>
+        prev.map((lead) =>
+          lead.id === selectedAdminLeadId ? { ...lead, assigned_user_id: selectedExecutiveId } : lead
+        )
+      );
+    } catch (error) {
+      console.error("Error asignando ejecutivo:", error);
+      setAdminError("No se pudo asignar el ejecutivo. Intenta de nuevo.");
+    } finally {
+      setAssignmentLoading(false);
+    }
+  };
 
   const goTo = (next: Screen) => {
     if (next === "chat") {
@@ -366,21 +610,179 @@ export default function Home() {
       {screen === "crm" && executiveAccess && (
         <section className="crm-screen">
           <header className="crm-header"><div><p className="eyebrow">VISTA PRIVADA · CRM · {executiveLabel}</p><h1>{isAdmin ? "Panel del equipo" : `Buenos días, ${executiveFirstName}`}</h1><p>{isAdmin ? "Supervisa oportunidades, equipo y decisiones comerciales." : "Estas son tus oportunidades y acciones pendientes."}</p></div><div className="crm-actions"><button className="search-button">⌕ Buscar</button><button className="search-button" onClick={handleLogout}>Cerrar sesión</button><button className="profile-avatar">{executiveInitials}</button></div></header>
-          <div className="metric-grid">{isAdmin ? <><Metric value="12" label="Leads nuevos" trend="+3 esta semana" /><Metric value="4" label="Prioridad alta" trend="Requieren atención" accent="orange" /><Metric value="3" label="Acciones pendientes" trend="Por revisar hoy" accent="blue" /><Metric value="4" label="Ejecutivos activos" trend="Equipo comercial" accent="green" /></> : <><Metric value="3" label="Mis leads" trend="Asignados a ti" /><Metric value="1" label="Prioridad alta" trend="Requiere atención" accent="orange" /><Metric value="2" label="Acciones pendientes" trend="Por revisar hoy" accent="blue" /><Metric value="68%" label="Ruta educativa" trend="Tasa de finalización" accent="green" /></>}</div>
-          {isAdmin && <section className="admin-control-card"><div><p className="eyebrow">ADMINISTRACIÓN</p><h2>Control del equipo comercial</h2><p>Como administrador puedes revisar la carga de trabajo, asignar responsables y supervisar las acciones aprobadas.</p></div><button className="outline-button">Gestionar equipo</button></section>}
+          <div className="metric-grid">
+            {isAdmin ? (
+              <>
+                <Metric value={adminLoading ? "..." : String(leadsTotalCount)} label="Total de leads" trend={adminLoading ? "Cargando datos..." : "Actualizado desde Supabase"} />
+                <Metric value={adminLoading ? "..." : String(leadsNewCount)} label="Leads nuevos" trend={adminLoading ? "Cargando datos..." : "Entradas recientes"} accent="orange" />
+                <Metric value={adminLoading ? "..." : String(leadsHighPriorityCount)} label="Leads alta prioridad" trend={adminLoading ? "Cargando datos..." : "Requiere atención"} accent="orange" />
+                <Metric value={adminLoading ? "..." : String(leadsUnassignedCount)} label="Leads sin asignar" trend={adminLoading ? "Cargando datos..." : "Pendientes de reparto"} accent="blue" />
+                <Metric value={adminLoading ? "..." : String(leadsInFollowUpCount)} label="Leads en seguimiento" trend={adminLoading ? "Cargando datos..." : "Trabajo activo"} accent="green" />
+                <Metric value={adminLoading ? "..." : String(activeExecutivesCount)} label="Ejecutivos activos" trend={adminLoading ? "Cargando datos..." : "Equipo comercial"} accent="green" />
+              </>
+            ) : (
+              <>
+                <Metric value="3" label="Mis leads" trend="Asignados a ti" />
+                <Metric value="1" label="Prioridad alta" trend="Requiere atención" accent="orange" />
+                <Metric value="2" label="Acciones pendientes" trend="Por revisar hoy" accent="blue" />
+                <Metric value="68%" label="Ruta educativa" trend="Tasa de finalización" accent="green" />
+              </>
+            )}
+          </div>
+          {isAdmin && (
+            <section className="admin-control-card">
+              <div>
+                <p className="eyebrow">VISTA PRIVADA · ADMINISTRACIÓN</p>
+                <h2>Panel administrativo</h2>
+                <p>Supervisa el rendimiento comercial, la distribución de leads y la carga del equipo.</p>
+              </div>
+              <div className="admin-user-card">
+                <span className="profile-avatar">{executiveInitials}</span>
+                <div>
+                  <p className="eyebrow">Administrador</p>
+                  <strong>{executiveAccess?.fullName}</strong>
+                </div>
+              </div>
+            </section>
+          )}
           <div className="crm-layout">
             <div className="leads-area">
               <div className="leads-heading"><div><h2>{isAdmin ? "Oportunidades del equipo" : "Mis oportunidades"}</h2><p>{isAdmin ? "Visión completa del embudo" : "Leads asignados a tu cartera"}</p></div>{isAdmin && <button className="filter-button">☷ Filtrar</button>}</div>
-              <div className="pipeline-tabs"><button className="active">{isAdmin ? "Todos" : "Asignados"} <span>{isAdmin ? 12 : 3}</span></button><button>Nuevos <span>{isAdmin ? 5 : 1}</span></button><button>Calificados <span>{isAdmin ? 4 : 2}</span></button>{isAdmin && <button>En seguimiento <span>3</span></button>}</div>
+              <div className="pipeline-tabs"><button className="active">{isAdmin ? "Todos" : "Asignados"} <span>{isAdmin ? leadsTotalCount : 3}</span></button><button>Nuevos <span>{isAdmin ? leadsNewCount : 1}</span></button><button>Calificados <span>{isAdmin ? leadsQualifiedCount : 2}</span></button>{isAdmin && <button>En seguimiento <span>{leadsInFollowUpCount}</span></button>}</div>
               <div className="lead-list">
-                <LeadRow selected name="Carlos Mendoza" initials="CM" type="B2C · Personal" priority="Alta" score="80" activity="Completó la ruta educativa" time="Hace 4 min" />
-                {isAdmin && <LeadRow name="Andrea López" initials="AL" type="B2B · Empresa" priority="Media" score="58" activity="Solicitó información para su equipo" time="Hace 21 min" />}
-                {isAdmin && <LeadRow name="Empresa Nova" initials="EN" type="B2B · 200 colaboradores" priority="Alta" score="85" activity="Pendiente de contacto" time="Hace 45 min" />}
-                {isAdmin && <LeadRow name="Sofía Ramírez" initials="SR" type="B2C · Personal" priority="Media" score="62" activity="Leyó material educativo" time="Ayer" />}
+                {isAdmin ? (
+                  adminLoading ? (
+                    <p className="admin-loading">Cargando oportunidades del equipo…</p>
+                  ) : filteredAdminLeads.length ? (
+                    filteredAdminLeads.map((lead) => (
+                      <LeadRow
+                        key={lead.id}
+                        selected={selectedAdminLeadId === lead.id}
+                        name={lead.full_name ?? lead.email ?? "Sin nombre"}
+                        initials={(lead.full_name ?? lead.email ?? "LE").split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}
+                        type={`${formatLeadType(lead.lead_type)} · ${lead.company ?? "Sin empresa"}`}
+                        priority={getPriorityLabel(lead.lead_score)}
+                        score={lead.lead_score != null ? String(lead.lead_score) : "0"}
+                        activity={lead.status ? lead.status.replace("_", " ") : "Sin actividad registrada"}
+                        time={formatDate(lead.created_at)}
+                        onSelect={() => setSelectedAdminLeadId(lead.id)}
+                      />
+                    ))
+                  ) : (
+                    <p className="more-leads">No se encontraron leads en este filtro.</p>
+                  )
+                ) : (
+                  <>
+                    <LeadRow selected name="Carlos Mendoza" initials="CM" type="B2C · Personal" priority="Alta" score="80" activity="Completó la ruta educativa" time="Hace 4 min" />
+                    <LeadRow name="Andrea López" initials="AL" type="B2B · Empresa" priority="Media" score="58" activity="Solicitó información para su equipo" time="Hace 21 min" />
+                    <LeadRow name="Empresa Nova" initials="EN" type="B2B · 200 colaboradores" priority="Alta" score="85" activity="Pendiente de contacto" time="Hace 45 min" />
+                    <LeadRow name="Sofía Ramírez" initials="SR" type="B2C · Personal" priority="Media" score="62" activity="Leyó material educativo" time="Ayer" />
+                  </>
+                )}
               </div>
               {isAdmin ? (showAllLeads ? <p className="more-leads">Mostrando 12 oportunidades activas.</p> : <button className="see-more" onClick={() => setShowAllLeads(true)}>Ver todas las oportunidades <span>→</span></button>) : <p className="more-leads">Mostrando tus oportunidades asignadas.</p>}
             </div>
-            <aside className="lead-detail"><div className="detail-head"><div className="detail-person"><span className="avatar large-avatar">CM</span><div><h2>Carlos Mendoza</h2><p>Lead B2C · Creado hoy, 10:24</p></div></div><button className="more-button">•••</button></div><div className="priority-banner"><span>✦</span><div><small>PRIORIDAD ALTA · 80/100</small><p>Interés definido, plazo cercano y perfil adecuado.</p></div><button>¿Por qué?</button></div><div className="detail-section"><div className="detail-label"><h3>Resumen de IA</h3><span>✦ Generado hace 1 min</span></div><p>Carlos quiere hacer crecer sus ahorros y desea comenzar el próximo mes. Es principiante, completó la introducción educativa y su principal preocupación es el riesgo.</p></div><div className="detail-grid"><div><small>OBJETIVO</small><p>Hacer crecer sus ahorros</p></div><div><small>EXPERIENCIA</small><p>Principiante</p></div><div><small>INTERÉS EDUCATIVO</small><p>{consent === "accepted" ? "Introducción a inversiones" : "No registrado"}</p></div><div><small>OBJECIÓN</small><p>Temor al riesgo</p></div></div><div className="next-action"><div><span className="action-icon">↗</span><div><small>SIGUIENTE ACCIÓN RECOMENDADA</small><h3>Agendar una reunión introductoria</h3><p>El lead tiene alta intención y ya completó la ruta educativa.</p></div></div>{actionStatus === "Pendiente" ? <div className="approval-actions"><button className="approve" onClick={() => setActionStatus("Aprobada")}>✓ Aprobar</button><button className="edit">Editar</button><button className="reject" onClick={() => setActionStatus("Rechazada")}>Rechazar</button></div> : <div className={`action-state ${actionStatus === "Aprobada" ? "approved" : "rejected"}`}><span>{actionStatus === "Aprobada" ? "✓" : "×"}</span> Acción {actionStatus.toLowerCase()}</div>}</div><div className="timeline"><h3>Actividad reciente</h3><Timeline time="10:24" text="Inició una conversación con Nexo" /><Timeline time="10:28" text="Completó la ruta educativa" /><Timeline time="10:31" text="Se generó una acción recomendada" active /></div></aside>
+            <aside className="lead-detail">
+              {isAdmin ? (
+                selectedAdminLead ? (
+                  <>
+                    <div className="detail-head">
+                      <div className="detail-person">
+                        <span className="avatar large-avatar">{(selectedAdminLead.full_name ?? selectedAdminLead.email ?? "LE").split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</span>
+                        <div>
+                          <h2>{selectedAdminLead.full_name ?? selectedAdminLead.email ?? "Lead sin nombre"}</h2>
+                          <p>{formatLeadType(selectedAdminLead.lead_type)} · Creado {formatDate(selectedAdminLead.created_at)}</p>
+                        </div>
+                      </div>
+                      <button className="more-button">•••</button>
+                    </div>
+                    <div className="priority-banner">
+                      <span>✦</span>
+                      <div>
+                        <small>PRIORIDAD {getPriorityLabel(selectedAdminLead.lead_score).toUpperCase()} · {selectedAdminLead.lead_score ?? "--"}/100</small>
+                        <p>{selectedAdminLead.lead_score != null ? "Lead con prioridad comercial definida." : "Aún no se ha calculado la prioridad."}</p>
+                      </div>
+                      <button>¿Por qué?</button>
+                    </div>
+                    <div className="detail-section">
+                      <div className="detail-label">
+                        <h3>Resumen del lead</h3>
+                        <span>✦ Actualizado recientemente</span>
+                      </div>
+                      <p>{selectedAdminLead.objective || selectedAdminLead.experience || "Este lead necesita más información para completar su perfil."}</p>
+                    </div>
+                    <div className="detail-grid">
+                      <div><small>Empresa</small><p>{selectedAdminLead.company || "No registrado"}</p></div>
+                      <div><small>Tipo</small><p>{formatLeadType(selectedAdminLead.lead_type)}</p></div>
+                      <div><small>Estado</small><p>{selectedAdminLead.status ? selectedAdminLead.status.replace("_", " ") : "No registrado"}</p></div>
+                      <div><small>Interés</small><p>{selectedAdminLead.interest_level != null ? `${selectedAdminLead.interest_level}/10` : "No registrado"}</p></div>
+                      <div><small>Urgencia</small><p>{selectedAdminLead.urgency_label || "No registrado"}</p></div>
+                      <div><small>Presupuesto</small><p>{selectedAdminLead.budget != null ? `$${selectedAdminLead.budget}` : "No registrado"}</p></div>
+                    </div>
+                    <div className="detail-section">
+                      <div className="detail-label">
+                        <h3>Asignación del ejecutivo</h3>
+                        <span>{selectedAssignedExecutive ? `Asignado a ${selectedAssignedExecutive.fullName}` : "Sin ejecutivo asignado"}</span>
+                      </div>
+                      <div className="lead-assign">
+                        <select value={selectedExecutiveId ?? ""} onChange={(event) => setSelectedExecutiveId(event.target.value)}>
+                          <option value="">Seleccionar ejecutivo</option>
+                          {adminExecutives.map((exec) => (
+                            <option key={exec.id} value={exec.id}>
+                              {exec.fullName} · {exec.role}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          className="small-cta"
+                          disabled={assignmentLoading || !selectedExecutiveId || selectedExecutiveId === selectedAdminLead.assigned_user_id}
+                          onClick={handleAssignExecutive}
+                          type="button"
+                        >
+                          {assignmentLoading ? "Asignando…" : "Asignar ejecutivo"}
+                        </button>
+                      </div>
+                      {adminError && <p className="admin-loading">{adminError}</p>}
+                    </div>
+                    <div className="next-action">
+                      <div>
+                        <span className="action-icon">↗</span>
+                        <div>
+                          <small>SIGUIENTE ACCIÓN RECOMENDADA</small>
+                          <h3>{selectedAdminLead.status === "nuevo" ? "Contactar a este lead" : "Revisar seguimiento"}</h3>
+                          <p>{selectedAdminLead.status === "nuevo" ? "Este lead debe ser contactado pronto para mantener el interés." : "Ya está en seguimiento, confirma el próximo paso con el ejecutivo asignado."}</p>
+                        </div>
+                      </div>
+                      {actionStatus === "Pendiente" ? (
+                        <div className="approval-actions">
+                          <button className="approve" onClick={() => setActionStatus("Aprobada")}>✓ Aprobar</button>
+                          <button className="edit">Editar</button>
+                          <button className="reject" onClick={() => setActionStatus("Rechazada")}>Rechazar</button>
+                        </div>
+                      ) : (
+                        <div className={`action-state ${actionStatus === "Aprobada" ? "approved" : "rejected"}`}>
+                          <span>{actionStatus === "Aprobada" ? "✓" : "×"}</span> Acción {actionStatus.toLowerCase()}
+                        </div>
+                      )}
+                    </div>
+                    <div className="timeline">
+                      <h3>Actividad reciente</h3>
+                      <Timeline time={formatDate(selectedAdminLead.created_at)} text="Lead registrado en el sistema" active />
+                      <Timeline time="Hace poco" text={selectedAdminLead.status ? `Estado actualizado a ${selectedAdminLead.status.replace("_", " ")}` : "Sin actividad registrada"} />
+                    </div>
+                  </>
+                ) : (
+                  <div className="admin-placeholder">
+                    <h3>Selecciona un lead para ver más detalles</h3>
+                    {adminLoading ? <p>Cargando oportunidades del equipo…</p> : <p>Elige un lead del panel para revisar su asignación, prioridad y seguimiento.</p>}
+                  </div>
+                )
+              ) : (
+                <>
+                  <div className="detail-head"><div className="detail-person"><span className="avatar large-avatar">CM</span><div><h2>Carlos Mendoza</h2><p>Lead B2C · Creado hoy, 10:24</p></div></div><button className="more-button">•••</button></div><div className="priority-banner"><span>✦</span><div><small>PRIORIDAD ALTA · 80/100</small><p>Interés definido, plazo cercano y perfil adecuado.</p></div><button>¿Por qué?</button></div><div className="detail-section"><div className="detail-label"><h3>Resumen de IA</h3><span>✦ Generado hace 1 min</span></div><p>Carlos quiere hacer crecer sus ahorros y desea comenzar el próximo mes. Es principiante, completó la introducción educativa y su principal preocupación es el riesgo.</p></div><div className="detail-grid"><div><small>OBJETIVO</small><p>Hacer crecer sus ahorros</p></div><div><small>EXPERIENCIA</small><p>Principiante</p></div><div><small>INTERÉS EDUCATIVO</small><p>{consent === "accepted" ? "Introducción a inversiones" : "No registrado"}</p></div><div><small>OBJECIÓN</small><p>Temor al riesgo</p></div></div><div className="next-action"><div><span className="action-icon">↗</span><div><small>SIGUIENTE ACCIÓN RECOMENDADA</small><h3>Agendar una reunión introductoria</h3><p>El lead tiene alta intención y ya completó la ruta educativa.</p></div></div>{actionStatus === "Pendiente" ? <div className="approval-actions"><button className="approve" onClick={() => setActionStatus("Aprobada")}>✓ Aprobar</button><button className="edit">Editar</button><button className="reject" onClick={() => setActionStatus("Rechazada")}>Rechazar</button></div> : <div className={`action-state ${actionStatus === "Aprobada" ? "approved" : "rejected"}`}><span>{actionStatus === "Aprobada" ? "✓" : "×"}</span> Acción {actionStatus.toLowerCase()}</div>}</div><div className="timeline"><h3>Actividad reciente</h3><Timeline time="10:24" text="Inició una conversación con Nexo" /><Timeline time="10:28" text="Completó la ruta educativa" /><Timeline time="10:31" text="Se generó una acción recomendada" active /></div>
+                </>
+              )}
+            </aside>
           </div>
         </section>
       )}
@@ -402,8 +804,8 @@ function Metric({ value, label, trend, accent = "ink" }: { value: string; label:
   return <div className={`metric ${accent}`}><b>{value}</b><span>{label}</span><small>{trend}</small></div>;
 }
 
-function LeadRow({ selected = false, name, initials, type, priority, score, activity, time }: { selected?: boolean; name: string; initials: string; type: string; priority: string; score: string; activity: string; time: string }) {
-  return <article className={`lead-row ${selected ? "selected" : ""}`}><span className="avatar">{initials}</span><div className="lead-main"><b>{name}</b><small>{type}</small></div><span className={`priority-pill ${priority === "Alta" ? "high" : "medium"}`}>{priority}</span><span className="lead-score">{score}</span><div className="activity"><span>{activity}</span><small>{time}</small></div><button aria-label={`Abrir ${name}`}>→</button></article>;
+function LeadRow({ selected = false, name, initials, type, priority, score, activity, time, onSelect }: { selected?: boolean; name: string; initials: string; type: string; priority: string; score: string; activity: string; time: string; onSelect?: () => void }) {
+  return <article className={`lead-row ${selected ? "selected" : ""}`} onClick={onSelect} style={{ cursor: onSelect ? "pointer" : "default" }}><span className="avatar">{initials}</span><div className="lead-main"><b>{name}</b><small>{type}</small></div><span className={`priority-pill ${priority === "Alta" ? "high" : "medium"}`}>{priority}</span><span className="lead-score">{score}</span><div className="activity"><span>{activity}</span><small>{time}</small></div><button aria-label={`Abrir ${name}`} type="button">→</button></article>;
 }
 
 function Timeline({ time, text, active = false }: { time: string; text: string; active?: boolean }) {
