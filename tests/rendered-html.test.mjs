@@ -20,11 +20,12 @@ test("keeps the product journey in the app source", async () => {
 });
 
 test("keeps the prospect conversation behind a server API", async () => {
-  const [orientation, component, route, scoring] = await Promise.all([
+  const [orientation, component, route, scoring, groq] = await Promise.all([
     readFile(new URL("../app/orientacion/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/prospect-chat.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/prospect/chat/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/prospect/scoring.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/prospect/groq.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(orientation, /VISTA DEL PROSPECTO/);
@@ -33,4 +34,8 @@ test("keeps the prospect conversation behind a server API", async () => {
   assert.match(route, /persistProspect/);
   assert.match(scoring, /calculateScore/);
   assert.match(scoring, /Interés.*presupuesto.*afinidad.*urgencia/s);
+  assert.match(groq, /composeAssistantMessage/);
+  assert.match(groq, /No hagas preguntas/);
+  assert.match(groq, /return requiredQuestion/);
+  assert.match(groq, /\$\{cleanAcknowledgement\} \$\{requiredQuestion\}/);
 });

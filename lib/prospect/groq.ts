@@ -25,7 +25,7 @@ async function requestGroq(
         temperature: 0.35,
         max_completion_tokens: 180,
       }),
-      signal: AbortSignal.timeout(12_000),
+      signal: AbortSignal.timeout(7_000),
     });
 
     if (!response.ok) return null;
@@ -34,6 +34,26 @@ async function requestGroq(
   } catch {
     return null;
   }
+}
+
+/**
+ * La IA puede acompañar la conversación, pero el orden de preguntas pertenece
+ * al flujo de producto. Así una respuesta creativa nunca cambia de etapa.
+ */
+export function composeAssistantMessage(
+  acknowledgement: string | null,
+  requiredQuestion: string,
+): string {
+  const cleanAcknowledgement = acknowledgement
+    ?.replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 220);
+
+  if (!cleanAcknowledgement || /[¿?]/.test(cleanAcknowledgement)) {
+    return requiredQuestion;
+  }
+
+  return `${cleanAcknowledgement} ${requiredQuestion}`;
 }
 
 export async function generateAssistantReply({
@@ -64,20 +84,21 @@ export async function generateAssistantReply({
       {
         role: "system",
         content:
-          "Eres Nexo, un orientador comercial financiero amable. Responde en español claro, sin recomendar productos ni dar asesoría de inversión. Reconoce brevemente la respuesta del prospecto y termina haciendo exactamente la pregunta indicada. Usa máximo dos oraciones y no uses Markdown.",
+          "Eres Nexo, un orientador comercial financiero amable. Responde en español claro, sin recomendar productos ni dar asesoría de inversión. Devuelve SOLO una frase corta de reconocimiento de la última respuesta del prospecto. No hagas preguntas, no pidas datos, no propongas pasos y no uses Markdown.",
       },
       ...recentTranscript,
       {
         role: "user",
-        content: `Pregunta obligatoria para continuar: ${requiredQuestion}`,
+        content: "Escribe únicamente la frase breve de reconocimiento.",
       },
     ],
     process.env.GROQ_CHAT_MODEL || "llama-3.1-8b-instant",
   );
 
-  return content
-    ? { content, provider: "groq" }
-    : { content: requiredQuestion, provider: "guided" };
+  return {
+    content: composeAssistantMessage(content, requiredQuestion),
+    provider: content ? "groq" : "guided",
+  };
 }
 
 export async function generateLeadSummary(
