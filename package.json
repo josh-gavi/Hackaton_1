@@ -10,10 +10,10 @@
     "build": "next build",
     "start": "next start",
     "test": "next build && node --test tests/rendered-html.test.mjs",
-    "lint": "eslint . --ignore-pattern .next",
-    "db:generate": "drizzle-kit generate"
+    "lint": "eslint . --ignore-pattern .next"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.110.2",
     "next": "16.2.6",
     "react": "19.2.6",
     "react-dom": "19.2.6"
