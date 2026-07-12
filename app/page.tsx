@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { User } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
 
-type Screen = "inicio" | "chat" | "academy" | "crm";
+type Screen = "inicio" | "chat" | "academy" | "login" | "crm";
 
 const chatQuestions = [
   {
@@ -58,6 +60,11 @@ function Icon({ children }: { children: string }) {
 }
 
 export default function Home() {
+  const [user, setUser] = useState<User | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
   const [screen, setScreen] = useState<Screen>("inicio");
   const [chatStep, setChatStep] = useState(0);
   const [responses, setResponses] = useState<string[]>([]);
@@ -73,8 +80,11 @@ export default function Home() {
   useEffect(() => {
     const requestedScreen = new URLSearchParams(window.location.search).get("screen");
     const timer = window.setTimeout(() => {
-      if (requestedScreen === "academy" || requestedScreen === "crm") {
-        setScreen(requestedScreen);
+      if (requestedScreen === "academy") {
+        setScreen("academy");
+      }
+      if (requestedScreen === "crm") {
+        setScreen("login");
       }
     }, 0);
     return () => window.clearTimeout(timer);
@@ -83,6 +93,11 @@ export default function Home() {
   const goTo = (next: Screen) => {
     if (next === "chat") {
       window.location.assign("/orientacion");
+      return;
+    }
+    if (next === "crm" && !user) {
+      setScreen("login");
+      window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
     setScreen(next);
@@ -110,6 +125,43 @@ export default function Home() {
     goTo("inicio");
   };
 
+  const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setAuthLoading(true);
+    setAuthError("");
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+    setAuthLoading(false);
+    if (error) {
+      setAuthError("Correo o contraseña incorrectos.");
+      return;
+    }
+
+    setEmail("");
+    setPassword("");
+    goTo("crm");
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    goTo("inicio");
+  };
+
+  useEffect(() => {
+    const loadSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user ?? null);
+    };
+
+    void loadSession();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   return (
     <main>
       <nav className="topbar" aria-label="Navegación principal">
@@ -122,8 +174,8 @@ export default function Home() {
           <button className={screen === "chat" ? "active" : ""} onClick={() => goTo("chat")}>Orientación</button>
           <button className={screen === "academy" ? "active" : ""} onClick={() => goTo("academy")}>Academy</button>
         </div>
-        <button className="small-cta" onClick={() => goTo("crm")}>
-          <Icon>▦</Icon> Acceso ejecutivo
+        <button className="small-cta" onClick={() => goTo(user ? "crm" : "login")}>
+          <Icon>▦</Icon> {user ? "Ir al CRM" : "Acceso ejecutivo"}
         </button>
       </nav>
 
@@ -229,9 +281,57 @@ export default function Home() {
         </section>
       )}
 
-      {screen === "crm" && (
+      {screen === "login" && (
+        <section className="login-screen">
+          <div className="login-card">
+            <p className="eyebrow">PORTAL EJECUTIVO</p>
+            <h2>Acceso privado</h2>
+            <p>Ingresa con tu correo y contraseña para revisar las oportunidades del equipo.</p>
+            <form className="login-form" onSubmit={handleLogin}>
+              <label>
+                Correo
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  autoComplete="email"
+                  required
+                />
+              </label>
+              <label>
+                Contraseña
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete="current-password"
+                  required
+                />
+              </label>
+              {authError && <p className="auth-error">{authError}</p>}
+              <button className="primary-button" type="submit" disabled={authLoading}>
+                {authLoading ? "Ingresando..." : "Iniciar sesión"}
+              </button>
+              <button type="button" className="text-button" onClick={() => goTo("inicio")}>Volver al inicio</button>
+            </form>
+          </div>
+        </section>
+      )}
+
+      {screen === "crm" && !user && (
+        <section className="login-screen">
+          <div className="login-card">
+            <p className="eyebrow">ACCESO RESTRINGIDO</p>
+            <h2>Inicia sesión para continuar</h2>
+            <p>El CRM solo está disponible para ejecutivos autorizados.</p>
+            <button className="primary-button" onClick={() => goTo("login")}>Ir al acceso ejecutivo</button>
+          </div>
+        </section>
+      )}
+
+      {screen === "crm" && user && (
         <section className="crm-screen">
-          <header className="crm-header"><div><p className="eyebrow">VISTA PRIVADA · CRM</p><h1>Buenos días, Valeria</h1><p>Estas son las oportunidades que requieren atención hoy.</p></div><div className="crm-actions"><button className="search-button">⌕ Buscar</button><button className="profile-avatar">VR</button></div></header>
+          <header className="crm-header"><div><p className="eyebrow">VISTA PRIVADA · CRM</p><h1>Buenos días, Valeria</h1><p>Estas son las oportunidades que requieren atención hoy.</p></div><div className="crm-actions"><button className="search-button">⌕ Buscar</button><button className="search-button" onClick={handleLogout}>Cerrar sesión</button><button className="profile-avatar">VR</button></div></header>
           <div className="metric-grid"><Metric value="12" label="Leads nuevos" trend="+3 esta semana" /><Metric value="4" label="Prioridad alta" trend="Requieren atención" accent="orange" /><Metric value="3" label="Acciones pendientes" trend="Por revisar hoy" accent="blue" /><Metric value="68%" label="Ruta educativa" trend="Tasa de finalización" accent="green" /></div>
           <div className="crm-layout">
             <div className="leads-area"><div className="leads-heading"><div><h2>Oportunidades</h2><p>Actualizado hace un momento</p></div><button className="filter-button">☷ Filtrar</button></div><div className="pipeline-tabs"><button className="active">Todos <span>12</span></button><button>Nuevos <span>5</span></button><button>Calificados <span>4</span></button><button>En seguimiento <span>3</span></button></div><div className="lead-list"><LeadRow selected name="Carlos Mendoza" initials="CM" type="B2C · Personal" priority="Alta" score="80" activity="Completó la ruta educativa" time="Hace 4 min" /><LeadRow name="Andrea López" initials="AL" type="B2B · Empresa" priority="Media" score="58" activity="Solicitó información para su equipo" time="Hace 21 min" /><LeadRow name="Empresa Nova" initials="EN" type="B2B · 200 colaboradores" priority="Alta" score="85" activity="Pendiente de contacto" time="Hace 45 min" /><LeadRow name="Sofía Ramírez" initials="SR" type="B2C · Personal" priority="Media" score="62" activity="Leyó material educativo" time="Ayer" /></div>{showAllLeads ? <p className="more-leads">Mostrando 12 oportunidades activas.</p> : <button className="see-more" onClick={() => setShowAllLeads(true)}>Ver todas las oportunidades <span>→</span></button>}</div>
