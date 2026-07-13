@@ -311,6 +311,15 @@ export function CrmDashboard({ access, onLogout }: { access: Access; onLogout: (
         <Metric value={loading ? "…" : `${metrics?.academyRate ?? 0}%`} label="Academy completada" trend={`${metrics?.academyCompleted ?? 0} leads con ruta`} accent="green" />
       </div>
 
+      {!loading && <DashboardInsights
+        isAdmin={isAdmin}
+        leads={leads}
+        executives={executives}
+        academyRate={metrics?.academyRate ?? 0}
+        academyCompleted={metrics?.academyCompleted ?? 0}
+        onSelectLead={selectLead}
+      />}
+
       {isAdmin && (
         <section className="admin-control-card">
           <div>
@@ -455,7 +464,130 @@ export function CrmDashboard({ access, onLogout }: { access: Access; onLogout: (
 }
 
 function Metric({ value, label, trend, accent = "ink" }: { value: string; label: string; trend: string; accent?: string }) {
-  return <div className={`metric ${accent}`}><b>{value}</b><span>{label}</span><small>{trend}</small></div>;
+  const icon = accent === "orange" ? "!" : accent === "blue" ? "+" : accent === "green" ? "✓" : "◌";
+  return (
+    <article className={`metric ${accent}`}>
+      <div className="metric-top"><span className="metric-icon" aria-hidden="true">{icon}</span><span className="metric-live">En vivo</span></div>
+      <b>{value}</b><span>{label}</span><small>{trend}</small>
+    </article>
+  );
+}
+
+function DashboardInsights({
+  isAdmin,
+  leads,
+  executives,
+  academyRate,
+  academyCompleted,
+  onSelectLead,
+}: {
+  isAdmin: boolean;
+  leads: DashboardLead[];
+  executives: Array<{ id: string; fullName: string }>;
+  academyRate: number;
+  academyCompleted: number;
+  onSelectLead: (leadId: string) => void;
+}) {
+  const total = leads.length;
+  const averageScore = total
+    ? Math.round(leads.reduce((sum, lead) => sum + (lead.lead_score ?? 0), 0) / total)
+    : 0;
+  const b2bCount = leads.filter((lead) => lead.lead_type === "b2b").length;
+  const b2cCount = leads.filter((lead) => lead.lead_type === "b2c").length;
+  const withoutAcademy = Math.max(total - academyCompleted, 0);
+  const stages: Array<{ label: string; status: LeadStatus; tone: string }> = [
+    { label: "Nuevos", status: "nuevo", tone: "violet" },
+    { label: "Calificados", status: "calificado", tone: "blue" },
+    { label: "En seguimiento", status: "en_seguimiento", tone: "orange" },
+    { label: "Interesados", status: "interesado", tone: "green" },
+    { label: "Clientes", status: "cliente", tone: "green" },
+  ];
+  const priorityLeads = [...leads]
+    .filter((lead) => (lead.lead_score ?? 0) >= 70 && lead.status !== "descartado")
+    .sort((first, second) => (second.lead_score ?? 0) - (first.lead_score ?? 0))
+    .slice(0, 3);
+  const teamLoads = [
+    ...executives.map((executive) => ({
+      id: executive.id,
+      name: executive.fullName,
+      count: leads.filter((lead) => lead.assigned_user_id === executive.id).length,
+    })),
+    ...(leads.some((lead) => !lead.assigned_user_id)
+      ? [{ id: "unassigned", name: "Sin asignar", count: leads.filter((lead) => !lead.assigned_user_id).length }]
+      : []),
+  ].sort((first, second) => second.count - first.count).slice(0, 4);
+
+  return (
+    <section className="crm-insights" aria-label="Panorama comercial">
+      <article className="portfolio-pulse-card">
+        <div>
+          <p className="eyebrow">RADAR COMERCIAL</p>
+          <h2>Preparación de la cartera</h2>
+          <p>Academy indica qué prospectos ya recibieron la base educativa antes del contacto.</p>
+        </div>
+        <div
+          className="academy-radar"
+          style={{ background: `conic-gradient(#796be0 0 ${academyRate}%, #ecebf3 ${academyRate}% 100%)` }}
+        >
+          <div><b>{academyRate}%</b><span>Academy</span></div>
+        </div>
+        <div className="radar-notes">
+          <span><b>{academyCompleted}</b> completaron Academy</span>
+          <span><b>{withoutAcademy}</b> aún por invitar</span>
+        </div>
+      </article>
+
+      <article className="pipeline-insight-card">
+        <div className="insight-card-heading">
+          <div><p className="eyebrow">RITMO DEL PIPELINE</p><h2>Etapas activas</h2></div>
+          <span className="score-chip">{averageScore}/100 promedio</span>
+        </div>
+        <div className="stage-bars">
+          {stages.map((stage) => {
+            const count = leads.filter((lead) => lead.status === stage.status).length;
+            const width = total ? Math.round((count / total) * 100) : 0;
+            return <div className="stage-bar" key={stage.status}>
+              <div><span>{stage.label}</span><b>{count}</b></div>
+              <div className="stage-track"><i className={stage.tone} style={{ width: `${width}%` }} /></div>
+            </div>;
+          })}
+        </div>
+        <div className="portfolio-mix">
+          <span><i className="mix-b2c" />B2C <b>{b2cCount}</b></span>
+          <span><i className="mix-b2b" />B2B <b>{b2bCount}</b></span>
+          <small>{total ? `${total} prospectos analizados en esta vista` : "Aún no hay prospectos en esta vista"}</small>
+        </div>
+      </article>
+
+      {isAdmin ? (
+        <article className="team-load-card">
+          <div className="insight-card-heading"><div><p className="eyebrow">EQUIPO</p><h2>Distribución de cartera</h2></div><span className="team-orb">{executives.length}</span></div>
+          {teamLoads.length ? <div className="team-load-list">{teamLoads.map((member) => (
+            <div className="team-load-row" key={member.id}>
+              <span className="mini-avatar">{initials(member.name)}</span>
+              <div><b>{member.name}</b><i><span style={{ width: `${total ? Math.round((member.count / total) * 100) : 0}%` }} /></i></div>
+              <strong>{member.count}</strong>
+            </div>
+          ))}</div> : <EmptyInsight text="Los leads asignados aparecerán aquí para equilibrar la carga del equipo." />}
+        </article>
+      ) : (
+        <article className="priority-focus-card">
+          <div className="insight-card-heading"><div><p className="eyebrow">FOCO INMEDIATO</p><h2>Prospectos a priorizar</h2></div><span className="focus-mark">✦</span></div>
+          {priorityLeads.length ? <div className="focus-lead-list">{priorityLeads.map((lead) => (
+            <button key={lead.id} type="button" onClick={() => onSelectLead(lead.id)}>
+              <span className="mini-avatar">{initials(lead.full_name || lead.email)}</span>
+              <span><b>{lead.full_name || lead.email || "Lead sin nombre"}</b><small>{lead.objective || "Objetivo por completar"}</small></span>
+              <strong>{lead.lead_score ?? 0}</strong>
+            </button>
+          ))}</div> : <EmptyInsight text="Cuando un prospecto alcance prioridad alta, aparecerá aquí para orientar tu próxima acción." />}
+        </article>
+      )}
+    </section>
+  );
+}
+
+function EmptyInsight({ text }: { text: string }) {
+  return <p className="empty-insight">{text}</p>;
 }
 
 function DetailItem({ label, value }: { label: string; value: string }) {
