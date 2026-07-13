@@ -16,6 +16,8 @@ export type Lead = {
   email: string | null;
   phone: string | null;
   company: string | null;
+  company_size: string | null;
+  decision_role: string | null;
   lead_type: LeadType | null;
   objective: string | null;
   experience: string | null;

@@ -46,7 +46,7 @@ function profileProgress(profile: ProspectProfile): { completed: number; total: 
     profile.urgencyScore,
     profile.email,
   ];
-  if (profile.leadType === "b2b") values.splice(2, 0, profile.company);
+  if (profile.leadType === "b2b") values.splice(2, 0, profile.company, profile.companySize, profile.decisionRole);
   return { completed: values.filter((value) => value !== undefined && value !== "").length, total: values.length };
 }
 
@@ -242,6 +242,8 @@ export function ProspectChat() {
         <ProfileRow label="Nombre" value={profile.fullName} />
         <ProfileRow label="Tipo" value={profile.leadType ? profile.leadType.toUpperCase() : undefined} />
         {profile.leadType === "b2b" && <ProfileRow label="Empresa" value={profile.company} />}
+        {profile.leadType === "b2b" && <ProfileRow label="Tamaño" value={profile.companySize} />}
+        {profile.leadType === "b2b" && <ProfileRow label="Decisión" value={profile.decisionRole} />}
         <ProfileRow label="Objetivo" value={profile.objective} />
         <ProfileRow label="Experiencia" value={profile.experience} />
         <ProfileRow label="Presupuesto" value={profile.budgetLabel} />

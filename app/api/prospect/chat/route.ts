@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { generateAssistantReply, generateLeadSummary, extractProspectData } from "@/lib/prospect/groq";
+import { getQualificationSettings } from "@/lib/prospect/config";
 import {
   applyAnswer,
   calculateScore,
+  getQuestion,
   getNextStage,
   getOptions,
   mergeProspectProfile,
@@ -37,6 +39,8 @@ function safeProfile(value: unknown): ProspectProfile {
     email: typeof input.email === "string" ? input.email.slice(0, 180) : undefined,
     leadType: input.leadType === "b2b" || input.leadType === "b2c" ? input.leadType : undefined,
     company: typeof input.company === "string" ? input.company.slice(0, 160) : undefined,
+    companySize: typeof input.companySize === "string" ? input.companySize.slice(0, 120) : undefined,
+    decisionRole: typeof input.decisionRole === "string" ? input.decisionRole.slice(0, 120) : undefined,
     objective: typeof input.objective === "string" ? input.objective.slice(0, 240) : undefined,
     experience: typeof input.experience === "string" ? input.experience.slice(0, 180) : undefined,
     budgetLabel: typeof input.budgetLabel === "string" ? input.budgetLabel.slice(0, 120) : undefined,
@@ -68,6 +72,8 @@ export async function POST(request: Request) {
     "name",
     "lead_type",
     "company",
+    "company_size",
+    "decision_role",
     "objective",
     "experience",
     "budget",
@@ -149,12 +155,14 @@ export async function POST(request: Request) {
 
   const nextStage = getNextStage(profile);
   const completed = nextStage === "complete";
+  const qualificationSettings = await getQualificationSettings();
 
   // 2. Generamos la respuesta conversacional
   const reply = await generateAssistantReply({
     transcript: body.messages,
     nextStage,
     accepted,
+    requiredQuestion: getQuestion(nextStage, qualificationSettings.questions),
   });
 
   let score = null;
@@ -167,7 +175,7 @@ export async function POST(request: Request) {
   let provider = reply.provider;
 
   if (completed) {
-    score = calculateScore(profile);
+    score = calculateScore(profile, qualificationSettings);
     const generatedSummary = await generateLeadSummary(
       [...body.messages, { role: "assistant", content: reply.content }],
       profile,

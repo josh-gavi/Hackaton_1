@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { supabase } from "@/lib/supabase";
+import { QualificationSettings } from "@/components/qualification-settings";
 
 type Access = { id: string; fullName: string; role: "administrador" | "executive" };
 type LeadStatus = "nuevo" | "calificado" | "en_seguimiento" | "interesado" | "cliente" | "descartado";
@@ -62,6 +63,9 @@ export function CrmDashboard({ access, onLogout }: { access: Access; onLogout: (
   const [selectedPotentialLeadId, setSelectedPotentialLeadId] = useState("");
   const [clientMessage, setClientMessage] = useState("");
   const [clientUpdateState, setClientUpdateState] = useState<string | null>(null);
+  const [decisionMode, setDecisionMode] = useState<"approved" | "rejected" | "edited" | null>(null);
+  const [decisionNote, setDecisionNote] = useState("");
+  const [decisionState, setDecisionState] = useState<string | null>(null);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -157,6 +161,32 @@ export function CrmDashboard({ access, onLogout }: { access: Access; onLogout: (
     }
   }
 
+  async function recordDecision(decision: "approved" | "rejected" | "edited") {
+    if (!selectedLead || saving) return;
+    setSaving(true);
+    setDecisionState(null);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error("Tu sesión expiró. Inicia sesión nuevamente.");
+      const response = await fetch("/api/crm/dashboard", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ leadId: selectedLead.id, decision, decisionNote }),
+      });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(data.error || "No pudimos guardar tu decisión.");
+      setDecisionState("Decisión guardada en el historial del lead.");
+      setDecisionMode(null);
+      setDecisionNote("");
+      await loadDashboard();
+    } catch (requestError) {
+      setDecisionState(requestError instanceof Error ? requestError.message : "No pudimos guardar tu decisión.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <section className="crm-screen">
       <header className="crm-header"><div><p className="eyebrow">VISTA PRIVADA · CRM · {isAdmin ? "ADMINISTRADOR" : "EJECUTIVO"}</p><h1>{isAdmin ? "Panel del equipo" : `Buenos días, ${access.fullName.split(" ")[0]}`}</h1><p>{isAdmin ? "Supervisa la distribución, el avance y los seguimientos del equipo." : "Estas son tus oportunidades y seguimientos asignados."}</p></div><div className="crm-actions"><button className="search-button" onClick={() => void loadDashboard()}>Actualizar</button><button className="search-button" onClick={onLogout}>Cerrar sesión</button><button className="profile-avatar">{initials(access.fullName)}</button></div></header>
@@ -174,6 +204,10 @@ export function CrmDashboard({ access, onLogout }: { access: Access; onLogout: (
 
       {error && <p className="auth-error">{error}</p>}
 
+      {isAdmin && <QualificationSettings />}
+
+      {view === "leads" && selectedLead && <ActionDecisionPanel lead={selectedLead} mode={decisionMode} note={decisionNote} saving={saving} state={decisionState} onChoose={setDecisionMode} onNote={setDecisionNote} onSave={recordDecision} />}
+
       {view === "potential" ? <section className="potential-users-card"><div className="leads-heading"><div><h2>Usuarios potenciales</h2><p>Cuentas de prospectos que pueden recibir novedades del asesor.</p></div><button className="filter-button" onClick={() => void loadPotentialUsers()}>Actualizar</button></div>{potentialError && <p className="auth-error">{potentialError}</p>}{potentialUsers.length ? <><form className="client-update-form" onSubmit={publishUpdate}><label>Destinatario<select value={selectedPotentialLeadId} onChange={(event) => setSelectedPotentialLeadId(event.target.value)}>{potentialUsers.map((account) => <option key={account.id} value={account.leadId}>{account.leadName || account.email}</option>)}</select></label><label>Mensaje para el prospecto<textarea value={clientMessage} onChange={(event) => setClientMessage(event.target.value)} maxLength={2000} placeholder="Escribe una novedad clara para el prospecto." required /></label><button className="primary-button">Publicar novedad</button>{clientUpdateState && <p className={clientUpdateState.startsWith("Novedad") ? "client-update-success" : "auth-error"}>{clientUpdateState}</p>}</form><div className="potential-user-list">{potentialUsers.map((account) => <article className="potential-user-row" key={account.id}><span className="avatar">{initials(account.leadName || account.email)}</span><div><b>{account.leadName || "Prospecto"}</b><small>{account.email}</small></div><span className={`account-status ${account.accountStatus}`}>{account.accountStatus === "active" ? "Cuenta activa" : "Por verificar"}</span><div><small>ASESOR</small><p>{account.advisorName || "Sin asignar"}</p></div><div><small>ESTADO</small><p>{account.leadStatus || "nuevo"}</p></div></article>)}</div></> : <p className="more-leads">No hay usuarios potenciales asignados a esta vista.</p>}</section> : <div className="crm-layout"><div className="leads-area"><div className="leads-heading"><div><h2>{isAdmin ? "Oportunidades del equipo" : "Mis oportunidades"}</h2><p>Información actualizada desde Supabase.</p></div></div><div className="pipeline-tabs"><button className={statusFilter === "todos" ? "active" : ""} onClick={() => setStatusFilter("todos")}>Todos <span>{leads.length}</span></button><button className={statusFilter === "nuevo" ? "active" : ""} onClick={() => setStatusFilter("nuevo")}>Nuevos <span>{metrics?.newLeads ?? 0}</span></button><button className={statusFilter === "calificado" ? "active" : ""} onClick={() => setStatusFilter("calificado")}>Calificados</button><button className={statusFilter === "en_seguimiento" ? "active" : ""} onClick={() => setStatusFilter("en_seguimiento")}>En seguimiento <span>{metrics?.inFollowUp ?? 0}</span></button></div>{loading ? <p className="admin-loading">Cargando oportunidades…</p> : filteredLeads.length ? <div className="lead-list">{filteredLeads.map((lead) => <button className={`dashboard-lead-row ${selectedLeadId === lead.id ? "selected" : ""}`} key={lead.id} onClick={() => setSelectedLeadId(lead.id)}><span className="avatar">{initials(lead.full_name || lead.email)}</span><div className="lead-main"><b>{lead.full_name || lead.email || "Lead sin nombre"}</b><small>{lead.lead_type?.toUpperCase() || "Lead"} · {lead.company || "Personal"}</small></div><span className={`priority-pill ${priority(lead.lead_score) === "Alta" ? "high" : "medium"}`}>{priority(lead.lead_score)}</span><span className="lead-score">{lead.lead_score ?? 0}</span><div className="activity"><span>{lead.academy ? "Completó Academy" : statusLabels[lead.status ?? "nuevo"]}</span><small>{formatDate(lead.created_at)}</small></div><span>→</span></button>)}</div> : <p className="more-leads">No hay leads en este filtro.</p>}</div><aside className="lead-detail">{selectedLead ? <><div className="detail-head"><div className="detail-person"><span className="avatar large-avatar">{initials(selectedLead.full_name || selectedLead.email)}</span><div><h2>{selectedLead.full_name || selectedLead.email}</h2><p>Lead {selectedLead.lead_type?.toUpperCase()} · Creado {formatDate(selectedLead.created_at)}</p></div></div></div><div className="priority-banner"><span>✦</span><div><small>PRIORIDAD {priority(selectedLead.lead_score).toUpperCase()} · {selectedLead.lead_score ?? 0}/100</small><p>{selectedLead.recommendedAction}</p></div></div><div className="detail-section"><div className="detail-label"><h3>Resumen de IA</h3><span>Generado desde la conversación</span></div><p>{selectedLead.summary}</p></div><div className="detail-grid"><div><small>OBJETIVO</small><p>{selectedLead.objective || "No registrado"}</p></div><div><small>EXPERIENCIA</small><p>{selectedLead.experience || "No registrada"}</p></div><div><small>ACADEMY</small><p>{selectedLead.academy ? `${selectedLead.academy.topic} · ${selectedLead.academy.quizScore}/3` : "No completada"}</p></div><div><small>URGENCIA</small><p>{selectedLead.urgency_label || "No registrada"}</p></div></div><div className="lead-update-panel"><label>Estado del seguimiento<select value={selectedLead.status ?? "nuevo"} onChange={(event) => void updateLead({ status: event.target.value as LeadStatus })} disabled={saving}>{(Object.keys(statusLabels) as LeadStatus[]).map((status) => <option key={status} value={status}>{statusLabels[status]}</option>)}</select></label>{isAdmin && <label>Ejecutivo asignado<select value={selectedLead.assigned_user_id ?? ""} onChange={(event) => event.target.value && void updateLead({ assignedUserId: event.target.value })} disabled={saving}><option value="">Sin asignar</option>{executives.map((executive) => <option key={executive.id} value={executive.id}>{executive.fullName}</option>)}</select></label>}<small>{saving ? "Guardando cambio…" : "Cada cambio se registra en el historial."}</small></div><div className="next-action"><div><span className="action-icon">↗</span><div><small>SIGUIENTE ACCIÓN SUGERIDA</small><h3>{selectedLead.recommendedAction}</h3><p>La sugerencia requiere la decisión del ejecutivo.</p></div></div><div className="approval-actions"><button className="approve" type="button">✓ Aprobar</button><button className="edit" type="button">Editar</button><button className="reject" type="button">Rechazar</button></div></div><div className="timeline"><h3>Actividad reciente</h3><Timeline time={formatDate(selectedLead.created_at)} text="Lead registrado en el sistema" active />{selectedLead.academy && <Timeline time={formatDate(selectedLead.academy.completedAt)} text="Completó Futuro Academy" />}{selectedLead.actions.slice(0, 3).map((action, index) => <Timeline key={`${action.executedAt}-${index}`} time={formatDate(action.executedAt)} text={action.description || action.actionType || "Actividad registrada"} />)}</div></> : <div className="admin-placeholder"><h3>Selecciona un lead</h3><p>Elige una oportunidad para revisar su contexto y seguimiento.</p></div>}</aside></div>}
     </section>
   );
@@ -185,4 +219,8 @@ function Metric({ value, label, trend, accent = "ink" }: { value: string; label:
 
 function Timeline({ time, text, active = false }: { time: string; text: string; active?: boolean }) {
   return <div className="timeline-row"><time>{time}</time><span className={active ? "active" : ""} /><p>{text}</p></div>;
+}
+
+function ActionDecisionPanel({ lead, mode, note, saving, state, onChoose, onNote, onSave }: { lead: DashboardLead; mode: "approved" | "rejected" | "edited" | null; note: string; saving: boolean; state: string | null; onChoose: (mode: "approved" | "rejected" | "edited" | null) => void; onNote: (value: string) => void; onSave: (decision: "approved" | "rejected" | "edited") => void }) {
+  return <section className="action-decision-panel"><div><p className="eyebrow">DECISIÓN HUMANA SOBRE LA ACCIÓN</p><h2>{lead.recommendedAction}</h2><p>La IA sugiere; el ejecutivo decide qué quedará registrado.</p></div><div className="approval-actions"><button className="approve" type="button" onClick={() => onSave("approved")} disabled={saving}>✓ Aprobar</button><button className="edit" type="button" onClick={() => onChoose("edited")} disabled={saving}>Editar</button><button className="reject" type="button" onClick={() => onSave("rejected")} disabled={saving}>Rechazar</button></div>{mode === "edited" && <div className="action-edit-form"><label>Acción ajustada<input value={note} onChange={(event) => onNote(event.target.value)} maxLength={500} placeholder="Ej.: Enviar material y llamar la próxima semana" /></label><button className="primary-button" type="button" disabled={saving || !note.trim()} onClick={() => onSave("edited")}>Guardar decisión</button><button className="outline-button" type="button" onClick={() => onChoose(null)}>Cancelar</button></div>}{state && <p className={state.startsWith("Decisión") ? "client-update-success" : "auth-error"}>{state}</p>}</section>;
 }

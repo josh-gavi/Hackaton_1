@@ -119,7 +119,7 @@ export async function PATCH(request: NextRequest) {
   const access = await getInternalAccess(request);
   if ("error" in access) return NextResponse.json({ error: access.error }, { status: access.status });
 
-  let body: { leadId?: unknown; status?: unknown; assignedUserId?: unknown };
+  let body: { leadId?: unknown; status?: unknown; assignedUserId?: unknown; decision?: unknown; decisionNote?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -135,6 +135,22 @@ export async function PATCH(request: NextRequest) {
   if (!lead) return NextResponse.json({ error: "Lead no encontrado." }, { status: 404 });
   if (access.user.role === "executive" && lead.assigned_user_id !== access.user.id) {
     return NextResponse.json({ error: "Solo puedes actualizar tus propios leads." }, { status: 403 });
+  }
+
+  if (body.decision === "approved" || body.decision === "rejected" || body.decision === "edited") {
+    const note = typeof body.decisionNote === "string" ? body.decisionNote.trim().slice(0, 500) : "";
+    if (body.decision === "edited" && !note) {
+      return NextResponse.json({ error: "Escribe la acción modificada antes de guardarla." }, { status: 400 });
+    }
+    const labels = { approved: "Acción sugerida aprobada", rejected: "Acción sugerida rechazada", edited: "Acción sugerida editada" };
+    const { error } = await access.supabase.from("commercial_actions").insert({
+      lead_id: lead.id,
+      user_id: access.user.id,
+      action_type: "decisión humana",
+      description: `${labels[body.decision]}${note ? `: ${note}` : "."}`,
+    });
+    if (error) return NextResponse.json({ error: "No se pudo guardar la decisión." }, { status: 500 });
+    return NextResponse.json({ ok: true, action: "decision" });
   }
 
   if (typeof body.status === "string") {

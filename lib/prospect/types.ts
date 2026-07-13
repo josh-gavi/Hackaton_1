@@ -9,6 +9,8 @@ export type ProspectStage =
   | "name"
   | "lead_type"
   | "company"
+  | "company_size"
+  | "decision_role"
   | "objective"
   | "experience"
   | "budget"
@@ -21,6 +23,8 @@ export type ProspectProfile = {
   email?: string;
   leadType?: "b2b" | "b2c";
   company?: string;
+  companySize?: string;
+  decisionRole?: string;
   objective?: string;
   experience?: string;
   budgetLabel?: string;

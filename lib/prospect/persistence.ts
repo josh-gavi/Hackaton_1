@@ -53,6 +53,8 @@ export async function persistProspect({
       full_name: profile.fullName,
       email: profile.email,
       company: profile.company ?? null,
+      company_size: profile.companySize ?? null,
+      decision_role: profile.decisionRole ?? null,
       lead_type: profile.leadType,
       objective: profile.objective ?? null,
       experience: profile.experience ?? null,

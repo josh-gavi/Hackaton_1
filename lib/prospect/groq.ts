@@ -71,6 +71,8 @@ No inventes nada. Devuelve solamente JSON con esta estructura exacta:
   "email": null,
   "leadType": null,
   "company": null,
+  "companySize": null,
+  "decisionRole": null,
   "objective": null,
   "experience": null,
   "budgetLabel": null,
@@ -85,6 +87,8 @@ Reglas:
 - Solo asigna leadType si el prospecto expresó claramente "es para mí", "para una empresa", "para mi negocio", "para mi equipo" o una idea equivalente. Nunca asumas B2C solo porque escribió su nombre o habla como una persona.
 - Consulta explícita para sí mismo, familiar o persona -> leadType: "b2c".
 - Consulta explícita para empresa, negocio, organización o equipo -> leadType: "b2b".
+- Para B2B, extrae companySize cuando mencione el tamaño, empleados o colaboradores de la empresa.
+- Para B2B, extrae decisionRole cuando indique si decide, participa en la decisión o solo investiga.
 - "unos 400 dólares" -> budgetLabel: "$400", budgetValue: 400.
 - "nunca he invertido" -> experience: "Sin experiencia".
 - Si el objetivo menciona ahorrar, invertir, aprender finanzas, jubilación, comprar una casa, vivienda, auto o vehículo, usa interestLevel: 25.
@@ -140,10 +144,12 @@ export async function generateAssistantReply({
   transcript,
   nextStage,
   accepted,
+  requiredQuestion,
 }: {
   transcript: ChatMessage[];
   nextStage: ProspectStage;
   accepted: boolean;
+  requiredQuestion?: string;
 }): Promise<{ content: string; provider: "groq" | "guided" }> {
   if (!accepted) {
     const correction =
@@ -155,7 +161,7 @@ export async function generateAssistantReply({
     return { content: correction, provider: "guided" };
   }
 
-  const requiredQuestion = getQuestion(nextStage);
+  const nextQuestion = requiredQuestion || getQuestion(nextStage);
   const recentTranscript = transcript.slice(-8);
   const content = await requestGroq(
     [
@@ -174,7 +180,7 @@ export async function generateAssistantReply({
   );
 
   return {
-    content: composeAssistantMessage(content, requiredQuestion),
+    content: composeAssistantMessage(content, nextQuestion),
     provider: content ? "groq" : "guided",
   };
 }

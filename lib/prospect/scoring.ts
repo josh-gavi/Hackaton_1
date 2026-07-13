@@ -6,6 +6,8 @@ import type {
 
 const OPTIONS: Partial<Record<ProspectStage, string[]>> = {
   lead_type: ["Es para mí", "Es para una empresa"],
+  company_size: ["1 a 20 personas", "21 a 100 personas", "Más de 100 personas"],
+  decision_role: ["Tomo la decisión", "Participo en la decisión", "Solo estoy investigando"],
   objective: [
     "Hacer crecer mis ahorros",
     "Aprender sobre inversiones",
@@ -24,6 +26,8 @@ export function getNextStage(profile: ProspectProfile): ProspectStage {
   if (!profile.fullName) return "name";
   if (!profile.leadType) return "lead_type";
   if (profile.leadType === "b2b" && !profile.company) return "company";
+  if (profile.leadType === "b2b" && !profile.companySize) return "company_size";
+  if (profile.leadType === "b2b" && !profile.decisionRole) return "decision_role";
   if (!profile.objective) return "objective";
   if (!profile.experience) return "experience";
   if (profile.budgetValue === undefined) return "budget";
@@ -36,11 +40,13 @@ export function getOptions(stage: ProspectStage): string[] {
   return OPTIONS[stage] ?? [];
 }
 
-export function getQuestion(stage: ProspectStage): string {
+export function getQuestion(stage: ProspectStage, configuredQuestions?: Partial<Record<ProspectStage, string>>): string {
   const questions: Record<ProspectStage, string> = {
     name: "¡Hola! Soy Nexo. Para comenzar, ¿cómo te llamas?",
     lead_type: "¿Esta orientación es para ti o para una empresa?",
     company: "¿Cuál es el nombre de la empresa?",
+    company_size: "¿Aproximadamente cuántas personas trabajan en la empresa?",
+    decision_role: "¿Cuál es tu participación en la decisión de contratar una solución?",
     objective: "¿Cuál es el principal objetivo que te gustaría alcanzar?",
     experience: "¿Qué experiencia tienes actualmente con inversiones?",
     budget: "¿Qué monto aproximado considerarías utilizar?",
@@ -50,7 +56,7 @@ export function getQuestion(stage: ProspectStage): string {
       "Gracias. Tu orientación está lista y ya puede continuar con el contexto correcto.",
   };
 
-  return questions[stage];
+  return configuredQuestions?.[stage] || questions[stage];
 }
 
 function cleanText(value: string, maxLength = 180): string {
@@ -118,6 +124,12 @@ export function applyAnswer(
     case "company":
       profile.company = answer;
       break;
+    case "company_size":
+      profile.companySize = answer;
+      break;
+    case "decision_role":
+      profile.decisionRole = answer;
+      break;
     case "objective":
       profile.objective = answer;
       profile.interestLevel = /crecer|invert|jubil|ahorr|educación|educacion/i.test(answer)
@@ -155,7 +167,7 @@ export function applyAnswer(
   return { profile, accepted: true };
 }
 
-export function calculateScore(profile: ProspectProfile): ScoreBreakdown {
+export function calculateScore(profile: ProspectProfile, thresholds: { highPriorityThreshold: number; mediumPriorityThreshold: number } = { highPriorityThreshold: 70, mediumPriorityThreshold: 40 }): ScoreBreakdown {
   const interest = Math.min(25, Math.max(0, profile.interestLevel ?? 0));
   const budgetValue = profile.budgetValue ?? 0;
   const budget = budgetValue > 1000 ? 25 : budgetValue >= 500 ? 18 : budgetValue > 0 ? 10 : 0;
@@ -165,7 +177,7 @@ export function calculateScore(profile: ProspectProfile): ScoreBreakdown {
     (profile.experience ? 7 : 0);
   const urgency = Math.min(25, Math.max(0, profile.urgencyScore ?? 0));
   const total = interest + budget + profileFit + urgency;
-  const priority = total >= 70 ? "Alta" : total >= 40 ? "Media" : "Baja";
+  const priority = total >= thresholds.highPriorityThreshold ? "Alta" : total >= thresholds.mediumPriorityThreshold ? "Media" : "Baja";
 
   return {
     interest,
@@ -229,6 +241,14 @@ export function mergeProspectProfile(
   // 4. Strings básicos (Company, Objective, Experience, Labels)
   if (extracted.company && typeof extracted.company === "string") {
     profile.company = extracted.company.trim();
+  }
+
+  if (extracted.companySize && typeof extracted.companySize === "string") {
+    profile.companySize = extracted.companySize.trim();
+  }
+
+  if (extracted.decisionRole && typeof extracted.decisionRole === "string") {
+    profile.decisionRole = extracted.decisionRole.trim();
   }
 
   if (extracted.objective && typeof extracted.objective === "string") {
