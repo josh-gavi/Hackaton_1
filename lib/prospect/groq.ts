@@ -91,10 +91,9 @@ Reglas:
 - Para B2B, extrae decisionRole cuando indique si decide, participa en la decisión o solo investiga.
 - "unos 400 dólares" -> budgetLabel: "$400", budgetValue: 400.
 - "nunca he invertido" -> experience: "Sin experiencia".
-- Si el objetivo menciona ahorrar, invertir, aprender finanzas, jubilación, comprar una casa, vivienda, auto o vehículo, usa interestLevel: 25.
-- Si expresa un objetivo general pero real, usa interestLevel: 18.
-- "el próximo mes" -> urgencyLabel: "El próximo mes", urgencyScore: 20.
-- "aún no sé", "aun no se", "no sé cuándo podría", "todavía no lo sé" o "no estoy seguro" -> urgencyLabel: "Aún no lo sé", urgencyScore: 5.
+- Deja interestLevel en null. La aplicación calcula ese puntaje de forma determinista a partir del objetivo confirmado.
+- "el próximo mes" -> urgencyLabel: "El próximo mes", urgencyScore: 12.
+- "aún no sé", "aun no se", "no sé cuándo podría", "todavía no lo sé" o "no estoy seguro" -> urgencyLabel: "Aún no lo sé", urgencyScore: 0.
 - Si un dato no aparece explícitamente, usa null.
 - Los datos ya confirmados no deben cambiarse. Solo devuelve fullName si aún no existe en el perfil o si el último mensaje dice explícitamente que está corrigiendo su nombre.
 

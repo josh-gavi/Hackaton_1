@@ -88,13 +88,82 @@ function parseUrgency(answer: string): { label: string; score: number } {
     return { label: answer, score: 25 };
   }
   if (normalized.includes("próximo") || normalized.includes("proximo")) {
-    return { label: answer, score: 20 };
+    return { label: answer, score: 12 };
   }
   if (normalized.includes("semana")) return { label: answer, score: 25 };
   if (normalized.includes("no") || normalized.includes("aún") || normalized.includes("aun")) {
-    return { label: answer, score: 5 };
+    return { label: answer, score: 0 };
   }
-  return { label: answer, score: 12 };
+  return { label: answer, score: 6 };
+}
+
+function normalizeForScore(value?: string): string {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function scoreInterest(objective?: string): number {
+  const normalized = normalizeForScore(objective);
+  if (!normalized) return 0;
+  if (/solo.*(explor|investig)|curios|informacion|todavia no se|aun no se/.test(normalized)) return 8;
+  if (/aprender|educacion|entender|conocer/.test(normalized)) return 12;
+  if (/invert|crecer|rentab|portafolio|generar ingresos/.test(normalized)) return 20;
+  if (/jubil|casa|vivienda|auto|vehiculo|ahorr/.test(normalized)) return 16;
+  return 10;
+}
+
+function scoreBudget(value?: number): number {
+  if (!value || value <= 0) return 0;
+  if (value > 1000) return 25;
+  if (value >= 500) return 14;
+  return 5;
+}
+
+function scoreExperience(experience?: string): number {
+  const normalized = normalizeForScore(experience);
+  if (!normalized) return 0;
+  if (/nunca|sin experiencia|principiante/.test(normalized)) return 2;
+  if (/algo de experiencia|algo relacionado|intermedio/.test(normalized)) return 6;
+  if (/ya invierto|invierto actualmente|avanzad|experiencia/.test(normalized)) return 10;
+  return 4;
+}
+
+function scoreCompanySize(companySize?: string): number {
+  const normalized = normalizeForScore(companySize);
+  if (/mas de 100|100\+|cientos/.test(normalized)) return 5;
+  if (/21\s*(a|-)?\s*100|mediana/.test(normalized)) return 3;
+  if (normalized) return 1;
+  return 0;
+}
+
+function scoreDecisionRole(decisionRole?: string): number {
+  const normalized = normalizeForScore(decisionRole);
+  if (/solo.*investig|solo.*inform|no.*decid/.test(normalized)) return 1;
+  if (/particip/.test(normalized)) return 6;
+  if (/tomo|decid/.test(normalized)) return 10;
+  return 0;
+}
+
+function scoreProfileFit(profile: ProspectProfile): number {
+  const base = profile.leadType ? 5 : 0;
+  const experience = scoreExperience(profile.experience);
+  if (profile.leadType !== "b2b") return Math.min(25, base + experience);
+
+  return Math.min(
+    25,
+    base + experience + scoreCompanySize(profile.companySize) + scoreDecisionRole(profile.decisionRole),
+  );
+}
+
+function scoreUrgency(label?: string): number {
+  const normalized = normalizeForScore(label);
+  if (!normalized) return 0;
+  if (/este mes|ahora|semana/.test(normalized)) return 25;
+  if (/proximo/.test(normalized)) return 12;
+  if (/no se|aun|todavia|no estoy seguro/.test(normalized)) return 0;
+  return 6;
 }
 
 export function applyAnswer(
@@ -168,14 +237,13 @@ export function applyAnswer(
 }
 
 export function calculateScore(profile: ProspectProfile, thresholds: { highPriorityThreshold: number; mediumPriorityThreshold: number } = { highPriorityThreshold: 70, mediumPriorityThreshold: 40 }): ScoreBreakdown {
-  const interest = Math.min(25, Math.max(0, profile.interestLevel ?? 0));
-  const budgetValue = profile.budgetValue ?? 0;
-  const budget = budgetValue > 1000 ? 25 : budgetValue >= 500 ? 18 : budgetValue > 0 ? 10 : 0;
-  const profileFit =
-    (profile.leadType ? 8 : 0) +
-    (profile.objective ? 10 : 0) +
-    (profile.experience ? 7 : 0);
-  const urgency = Math.min(25, Math.max(0, profile.urgencyScore ?? 0));
+  // Los cuatro factores se derivan de las respuestas estructuradas, no de un
+  // valor que el modelo de IA pueda sobrestimar. Esto mantiene la prioridad
+  // consistente y deja espacio real para leads de prioridad baja y media.
+  const interest = scoreInterest(profile.objective);
+  const budget = scoreBudget(profile.budgetValue);
+  const profileFit = scoreProfileFit(profile);
+  const urgency = scoreUrgency(profile.urgencyLabel);
   const total = interest + budget + profileFit + urgency;
   const priority = total >= thresholds.highPriorityThreshold ? "Alta" : total >= thresholds.mediumPriorityThreshold ? "Media" : "Baja";
 
@@ -199,9 +267,9 @@ function inferInterestLevel(objective: string): number {
 function inferUrgencyScore(label: string): number {
   const normalized = label.toLowerCase();
   if (normalized.includes("este mes") || normalized.includes("ahora") || normalized.includes("semana")) return 25;
-  if (normalized.includes("próximo") || normalized.includes("proximo")) return 20;
-  if (normalized.includes("no sé") || normalized.includes("no se") || normalized.includes("aún") || normalized.includes("aun")) return 5;
-  return 12;
+  if (normalized.includes("próximo") || normalized.includes("proximo")) return 12;
+  if (normalized.includes("no sé") || normalized.includes("no se") || normalized.includes("aún") || normalized.includes("aun")) return 0;
+  return 6;
 }
 
 function validScore(value: unknown): number | undefined {

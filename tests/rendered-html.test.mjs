@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import vm from "node:vm";
+import * as ts from "typescript";
+
+async function loadCalculateScore() {
+  const source = await readFile(new URL("../lib/prospect/scoring.ts", import.meta.url), "utf8");
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const commonJsModule = { exports: {} };
+  vm.runInNewContext(compiled, { exports: commonJsModule.exports, module: commonJsModule });
+  return commonJsModule.exports.calculateScore;
+}
 
 test("keeps the product journey in the app source", async () => {
   const [page, layout, css] = await Promise.all([
@@ -38,4 +50,34 @@ test("keeps the prospect conversation behind a server API", async () => {
   assert.match(groq, /No hagas preguntas/);
   assert.match(groq, /return requiredQuestion/);
   assert.match(groq, /\$\{cleanAcknowledgement\} \$\{requiredQuestion\}/);
+});
+
+test("assigns low, medium and high priority from confirmed prospect signals", async () => {
+  const calculateScore = await loadCalculateScore();
+
+  const low = calculateScore({
+    leadType: "b2c",
+    objective: "Solo estoy explorando por ahora",
+    experience: "Soy principiante",
+    budgetValue: 250,
+    urgencyLabel: "Aún no lo sé",
+  });
+  const medium = calculateScore({
+    leadType: "b2c",
+    objective: "Quiero hacer crecer mis ahorros",
+    experience: "Soy principiante",
+    budgetValue: 600,
+    urgencyLabel: "El próximo mes",
+  });
+  const high = calculateScore({
+    leadType: "b2c",
+    objective: "Quiero invertir mi dinero",
+    experience: "Ya invierto actualmente",
+    budgetValue: 1500,
+    urgencyLabel: "Este mes",
+  });
+
+  assert.deepEqual([low.total, low.priority], [20, "Baja"]);
+  assert.deepEqual([medium.total, medium.priority], [53, "Media"]);
+  assert.deepEqual([high.total, high.priority], [85, "Alta"]);
 });
