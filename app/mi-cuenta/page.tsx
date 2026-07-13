@@ -11,6 +11,15 @@ type AccountData = {
   updates: Array<{ id: number; message: string; created_at: string }>;
 };
 
+const prospectStatusLabels: Record<string, string> = {
+  nuevo: "recibida",
+  calificado: "revisada por el equipo",
+  en_seguimiento: "en seguimiento",
+  interesado: "avanzando con tu asesor",
+  cliente: "en proceso de incorporación",
+  descartado: "cerrada por ahora",
+};
+
 export default function MyAccountPage() {
   const [data, setData] = useState<AccountData | null>(null);
   const [email, setEmail] = useState("");
@@ -42,7 +51,11 @@ export default function MyAccountPage() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadAccount(), 0);
-    return () => window.clearTimeout(timer);
+    const interval = window.setInterval(() => void loadAccount(), 20_000);
+    return () => {
+      window.clearTimeout(timer);
+      window.clearInterval(interval);
+    };
   }, []);
 
   async function signIn(event: FormEvent<HTMLFormElement>) {
@@ -69,14 +82,14 @@ export default function MyAccountPage() {
     <main className="account-screen">
       <header className="account-header">
         <Link className="brand" href="/"><span className="brand-mark">N</span><span>Nexo <b>Futuro</b></span></Link>
-        {data && <button className="outline-button" onClick={() => void signOut()}>Cerrar sesión</button>}
+        {data && <div className="account-header-actions"><button className="outline-button" onClick={() => void loadAccount()}>Actualizar</button><button className="outline-button" onClick={() => void signOut()}>Cerrar sesión</button></div>}
       </header>
 
       {loading ? <p>Cargando tu seguimiento…</p> : data ? (
         <section className="account-card">
           <p className="eyebrow">MI SEGUIMIENTO</p>
           <h1>Hola, {data.lead.full_name?.split(" ")[0] || ""}.</h1>
-          <p>Tu orientación está en estado <b>{data.lead.status ?? "nuevo"}</b>. {data.lead.advisorName ? `${data.lead.advisorName} es tu asesor asignado.` : "Un asesor revisará tu caso."}</p>
+          <p>Tu orientación está <b>{prospectStatusLabels[data.lead.status ?? "nuevo"] ?? "en revisión"}</b>. {data.lead.advisorName ? `${data.lead.advisorName} es tu asesor asignado.` : "Un asesor revisará tu caso."}</p>
           {data.account.status !== "active" && <p className="account-note">Confirma tu correo para activar por completo esta cuenta.</p>}
           <div className="account-summary"><small>OBJETIVO</small><p>{data.lead.objective || "Por definir"}</p></div>
           <h2>Novedades de tu asesoría</h2>

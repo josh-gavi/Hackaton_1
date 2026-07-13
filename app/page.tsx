@@ -1,11 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { CrmDashboard } from "@/components/crm-dashboard";
 import { supabase } from "@/lib/supabase";
 
 type Screen = "inicio" | "chat" | "academy" | "login" | "crm";
 type ExecutiveRole = "administrador" | "executive";
 type ExecutiveAccess = { id: string; fullName: string; role: ExecutiveRole };
+const showLegacyCrmPreview = false;
 type PotentialUser = {
   id: string;
   leadId: string;
@@ -435,7 +438,9 @@ export default function Home() {
         </section>
       )}
 
-      {screen === "crm" && executiveAccess && (
+      {screen === "crm" && executiveAccess && <CrmDashboard access={executiveAccess} onLogout={() => void handleLogout()} />}
+
+      {screen === "crm" && executiveAccess && showLegacyCrmPreview && (
         <section className="crm-screen">
           <header className="crm-header"><div><p className="eyebrow">VISTA PRIVADA · CRM · {executiveLabel}</p><h1>{isAdmin ? "Panel del equipo" : `Buenos días, ${executiveFirstName}`}</h1><p>{isAdmin ? "Supervisa oportunidades, equipo y decisiones comerciales." : "Estas son tus oportunidades y acciones pendientes."}</p></div><div className="crm-actions"><button className="search-button">⌕ Buscar</button><button className="search-button" onClick={handleLogout}>Cerrar sesión</button><button className="profile-avatar">{executiveInitials}</button></div></header>
           <div className="metric-grid">{isAdmin ? <><Metric value="12" label="Leads nuevos" trend="+3 esta semana" /><Metric value="4" label="Prioridad alta" trend="Requieren atención" accent="orange" /><Metric value="3" label="Acciones pendientes" trend="Por revisar hoy" accent="blue" /><Metric value="4" label="Ejecutivos activos" trend="Equipo comercial" accent="green" /></> : <><Metric value="3" label="Mis leads" trend="Asignados a ti" /><Metric value="1" label="Prioridad alta" trend="Requiere atención" accent="orange" /><Metric value="2" label="Acciones pendientes" trend="Por revisar hoy" accent="blue" /><Metric value="68%" label="Ruta educativa" trend="Tasa de finalización" accent="green" /></>}</div>

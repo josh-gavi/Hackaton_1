@@ -42,7 +42,9 @@ export async function persistProspect({
 
   const supabase = createSupabaseAdminClient();
   const assignedUserId = await findActiveExecutiveId(supabase);
-  const status = score.total >= 70 ? "calificado" : score.total >= 40 ? "interesado" : "nuevo";
+  // La prioridad se calcula automáticamente; la etapa comercial comienza en
+  // "nuevo" hasta que un ejecutivo revise y confirme el siguiente paso.
+  const status = "nuevo";
 
   const { data: lead, error: leadError } = await supabase
     .from("leads")

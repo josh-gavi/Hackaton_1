@@ -208,9 +208,14 @@ export function ProspectChat() {
         ) : completed ? (
           <div className="prospect-complete-actions">
             {result?.persistence.leadId ? (
-              <Link className="primary-button" href={`/academy?lead_id=${encodeURIComponent(result.persistence.leadId)}`}>
-                Continuar con Futuro Academy <span>→</span>
-              </Link>
+              <>
+                <Link className="outline-button" href={`/crear-cuenta?lead_id=${encodeURIComponent(result.persistence.leadId)}`}>
+                  Crear cuenta de seguimiento
+                </Link>
+                <Link className="primary-button" href={`/academy?lead_id=${encodeURIComponent(result.persistence.leadId)}`}>
+                  Continuar con Futuro Academy <span>→</span>
+                </Link>
+              </>
             ) : (
               <p className="prospect-error">No podemos abrir Academy hasta que la orientación se guarde correctamente.</p>
             )}
