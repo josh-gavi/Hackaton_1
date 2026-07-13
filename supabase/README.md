@@ -15,6 +15,8 @@ crear tablas en esta rama, porque el equipo ya creó el modelo comercial remoto.
 | `opportunities` | Etapa, probabilidad y valor estimado. |
 | `followups` | Resumen de IA, objeciones y siguiente acción recomendada. |
 | `commercial_actions` | Acciones ejecutadas por un usuario sobre un lead. |
+| `prospect_accounts` | Cuenta opcional del prospecto, enlazada a Supabase Auth y a un solo lead. |
+| `client_updates` | Novedades que un ejecutivo decide publicar para su prospecto. |
 
 Los valores de estado acordados para `leads.status` son: `nuevo`,
 `calificado`, `en_seguimiento`, `interesado`, `cliente` y `descartado`.
@@ -39,6 +41,10 @@ usuario asignado y las entidades comerciales con su lead. El equipo acordó usar
 Supabase Auth para el login. La rama de autenticación será responsable de
 vincular `public.users` con `auth.users` y de no guardar contraseñas en
 `public.users.password_hash`; esta rama no modifica esa implementación.
+
+El perfil `prospect` no es un usuario interno: vive en `prospect_accounts`, se
+enlaza a Supabase Auth y solo puede consultar novedades publicadas para su propio
+lead. No debe crear una fila en `public.users` ni acceder al CRM.
 
 También se acordó que cada acción comercial pertenecerá a un seguimiento
 específico. La relación `commercial_actions` → `followups` se incorporará cuando

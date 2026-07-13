@@ -56,9 +56,24 @@ GROQ_API_KEY=
 
 La llave de servicio de Supabase y la de Groq solo se usan desde rutas del
 servidor; no deben subirse a GitHub ni copiarse a componentes del navegador.
-Al terminar la orientación, el servidor crea el lead y guarda el resumen y el
-historial en `conversations`. El ejecutivo se asigna después desde el flujo
-interno, por lo que esta ruta no modifica el login ni los usuarios.
+Al terminar la orientación, el servidor crea el lead, le asigna un ejecutivo
+activo y guarda el resumen y el historial en `conversations`. La asignación
+actual toma el primer ejecutivo activo; el dashboard podrá reemplazarla por una
+regla de distribución o una reasignación manual.
+
+## Cuentas de seguimiento del prospecto
+
+Antes de probar esta parte, aplica en Supabase SQL Editor la migración
+`supabase/migrations/202607120005_add_prospect_accounts.sql`.
+
+Al finalizar Academy, el prospecto puede crear una cuenta con el mismo correo
+usado en la orientación. Esa cuenta tiene el rol `prospect`, no crea un usuario
+interno y no puede acceder al CRM. Las novedades visibles para ella se guardan
+en `client_updates` y se consultan en `/mi-cuenta`.
+
+En **Supabase Auth > URL Configuration**, agrega la URL local
+`http://localhost:3000/mi-cuenta` como Redirect URL si la confirmación de correo
+está activa.
 
 ## Estructura principal
 

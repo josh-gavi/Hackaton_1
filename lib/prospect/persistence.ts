@@ -3,6 +3,28 @@ import "server-only";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { ChatMessage, ProspectProfile, ScoreBreakdown } from "./types";
 
+async function findActiveExecutiveId(supabase: ReturnType<typeof createSupabaseAdminClient>) {
+  const { data: executiveProfile, error: profileError } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("nombre", "executive")
+    .maybeSingle();
+
+  if (profileError || !executiveProfile) return null;
+
+  const { data: executive, error: executiveError } = await supabase
+    .from("users")
+    .select("id")
+    .eq("profile_id", executiveProfile.id)
+    .eq("is_active", true)
+    .order("id", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (executiveError || !executive) return null;
+  return executive.id as string;
+}
+
 export async function persistProspect({
   messages,
   profile,
@@ -19,12 +41,13 @@ export async function persistProspect({
   }
 
   const supabase = createSupabaseAdminClient();
+  const assignedUserId = await findActiveExecutiveId(supabase);
   const status = score.total >= 70 ? "calificado" : score.total >= 40 ? "interesado" : "nuevo";
 
   const { data: lead, error: leadError } = await supabase
     .from("leads")
     .insert({
-      assigned_user_id: null,
+      assigned_user_id: assignedUserId,
       full_name: profile.fullName,
       email: profile.email,
       company: profile.company ?? null,

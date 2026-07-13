@@ -46,6 +46,7 @@ export type ChatResponse = {
   stage: ProspectStage;
   options: string[];
   completed: boolean;
+  cancelled?: boolean;
   score: ScoreBreakdown | null;
   summary: string | null;
   persistence: {

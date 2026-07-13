@@ -20,6 +20,7 @@ export default function OrientationPage() {
           <Link className="active" href="/orientacion">Orientación</Link>
           <Link href="/?screen=academy">Academy</Link>
         </div>
+        <Link className="prospect-account-link" href="/mi-cuenta">Mi cuenta</Link>
         <Link className="small-cta" href="/?screen=crm">Acceso ejecutivo</Link>
       </nav>
 

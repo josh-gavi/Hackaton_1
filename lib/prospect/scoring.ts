@@ -107,9 +107,13 @@ export function applyAnswer(
       profile.fullName = answer;
       break;
     case "lead_type":
-      profile.leadType = /empresa|equipo|organización|organizacion|b2b/i.test(answer)
-        ? "b2b"
-        : "b2c";
+      if (/\bb2b\b|empresa|equipo|organizaci(?:ón|on)/i.test(answer)) {
+        profile.leadType = "b2b";
+      } else if (/\bb2c\b|para m[ií]|personal|persona|consumidor/i.test(answer)) {
+        profile.leadType = "b2c";
+      } else {
+        return { profile: current, accepted: false };
+      }
       break;
     case "company":
       profile.company = answer;

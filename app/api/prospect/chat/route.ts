@@ -47,6 +47,10 @@ function safeProfile(value: unknown): ProspectProfile {
   };
 }
 
+function isDisallowedObjective(value: string) {
+  return /lavado\s+de\s+dinero|blanqueo\s+de\s+capital(?:es)?|fraude|estafa|evadir\s+impuesto|actividad\s+ilegal/i.test(value);
+}
+
 export async function POST(request: Request) {
   let body: { messages?: unknown; profile?: unknown; stage?: unknown };
   try {
@@ -79,6 +83,43 @@ export async function POST(request: Request) {
   const lastMessage = body.messages.at(-1);
   if (!lastMessage || lastMessage.role !== "user") {
     return NextResponse.json({ error: "Falta el mensaje del prospecto." }, { status: 400 });
+  }
+
+  if (currentStage === "objective" && isDisallowedObjective(lastMessage.content)) {
+    return NextResponse.json({
+      assistantMessage:
+        "No podemos ayudar con objetivos ilícitos ni con actividades fuera de nuestro servicio. Cerraremos esta orientación sin guardar datos.",
+      profile: currentProfile,
+      stage: currentStage,
+      options: [],
+      completed: false,
+      cancelled: true,
+      score: null,
+      summary: null,
+      persistence: { saved: false, reason: "not_configured" },
+      aiProvider: "guided",
+    });
+  }
+
+  // El correo es necesario para registrar un lead completo. Si la persona no
+  // desea compartirlo, cerramos la orientación sin inventar ni guardar datos.
+  if (
+    currentStage === "email" &&
+    /no quiero|no deseo|prefiero no|no voy a|cancelar|salir|terminar/i.test(lastMessage.content)
+  ) {
+    return NextResponse.json({
+      assistantMessage:
+        "Entiendo. Cerraremos esta orientación y no guardaremos tus datos. Puedes volver a iniciarla cuando quieras.",
+      profile: currentProfile,
+      stage: currentStage,
+      options: [],
+      completed: false,
+      cancelled: true,
+      score: null,
+      summary: null,
+      persistence: { saved: false, reason: "not_configured" },
+      aiProvider: "guided",
+    });
   }
 
   // 1. Intentamos extraer los datos con Groq en formato JSON

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { getQuestion } from "@/lib/prospect/scoring";
 import type {
@@ -12,6 +12,29 @@ import type {
 } from "@/lib/prospect/types";
 
 const INITIAL_STAGE: ProspectStage = "name";
+const DRAFT_STORAGE_KEY = "nexo-prospect-draft-v1";
+
+type ProspectDraft = {
+  messages: ChatMessage[];
+  profile: ProspectProfile;
+  stage: ProspectStage;
+  options: string[];
+  result: ChatResponse | null;
+};
+
+function readDraft(): ProspectDraft | null {
+  try {
+    const raw = window.sessionStorage.getItem(DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+    const draft = JSON.parse(raw) as ProspectDraft;
+    if (!Array.isArray(draft.messages) || !draft.messages.length || !draft.stage || !Array.isArray(draft.options)) {
+      return null;
+    }
+    return draft;
+  } catch {
+    return null;
+  }
+}
 
 function profileProgress(profile: ProspectProfile): { completed: number; total: number } {
   const values = [
@@ -38,14 +61,40 @@ export function ProspectChat() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ChatResponse | null>(null);
+  const [draftRestored, setDraftRestored] = useState(false);
   const messageEndRef = useRef<HTMLDivElement>(null);
 
   const progress = useMemo(() => profileProgress(profile), [profile]);
   const completed = result?.completed ?? false;
+  const cancelled = result?.cancelled ?? false;
+  const stopped = completed || cancelled;
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const draft = readDraft();
+      if (draft) {
+        setMessages(draft.messages);
+        setProfile(draft.profile ?? {});
+        setStage(draft.stage);
+        setOptions(draft.options);
+        setResult(draft.result ?? null);
+      }
+      setDraftRestored(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!draftRestored || loading) return;
+    window.sessionStorage.setItem(
+      DRAFT_STORAGE_KEY,
+      JSON.stringify({ messages, profile, stage, options, result } satisfies ProspectDraft),
+    );
+  }, [draftRestored, loading, messages, options, profile, result, stage]);
 
   async function sendMessage(answer: string) {
     const content = answer.trim();
-    if (!content || loading || completed) return;
+    if (!content || loading || stopped) return;
 
     const nextMessages: ChatMessage[] = [...messages, { role: "user", content }];
     setMessages(nextMessages);
@@ -99,6 +148,7 @@ export function ProspectChat() {
     setInput("");
     setError(null);
     setResult(null);
+    window.sessionStorage.removeItem(DRAFT_STORAGE_KEY);
   }
 
   return (
@@ -133,7 +183,7 @@ export function ProspectChat() {
           <div ref={messageEndRef} />
         </div>
 
-        {!completed && options.length > 0 && (
+        {!stopped && options.length > 0 && (
           <div className="prospect-options" aria-label="Respuestas sugeridas">
             {options.map((option) => (
               <button type="button" key={option} onClick={() => void sendMessage(option)} disabled={loading}>
@@ -143,7 +193,7 @@ export function ProspectChat() {
           </div>
         )}
 
-        {!completed ? (
+        {!stopped ? (
           <form className="prospect-input" onSubmit={submit}>
             <input
               value={input}
@@ -155,11 +205,19 @@ export function ProspectChat() {
             />
             <button type="submit" disabled={loading || !input.trim()} aria-label="Enviar mensaje">↑</button>
           </form>
+        ) : completed ? (
+          <div className="prospect-complete-actions">
+            {result?.persistence.leadId ? (
+              <Link className="primary-button" href={`/academy?lead_id=${encodeURIComponent(result.persistence.leadId)}`}>
+                Continuar con Futuro Academy <span>→</span>
+              </Link>
+            ) : (
+              <p className="prospect-error">No podemos abrir Academy hasta que la orientación se guarde correctamente.</p>
+            )}
+          </div>
         ) : (
           <div className="prospect-complete-actions">
-            <Link className="primary-button" href={result?.persistence.leadId ? `/academy?lead_id=${encodeURIComponent(result.persistence.leadId)}` : "/academy"}>
-              Continuar con Futuro Academy <span>→</span>
-            </Link>
+            <p className="prospect-privacy">Orientación cerrada. No guardamos información de contacto.</p>
           </div>
         )}
       </article>
@@ -168,7 +226,7 @@ export function ProspectChat() {
         <div className="prospect-profile-head">
           <div>
             <p className="eyebrow">TU ORIENTACIÓN</p>
-            <h2>{completed ? "Perfil completado" : "Perfil en progreso"}</h2>
+            <h2>{completed ? "Perfil completado" : cancelled ? "Orientación cerrada" : "Perfil en progreso"}</h2>
           </div>
           <span>{progress.completed}/{progress.total}</span>
         </div>
@@ -192,6 +250,11 @@ export function ProspectChat() {
               <strong>Orientación preparada</strong>
               <p>El equipo podrá continuar sin pedirte que repitas la conversación.</p>
             </div>
+          </div>
+        ) : cancelled ? (
+          <div className="prospect-privacy">
+            <span>⌁</span>
+            <p>No se guardó un lead porque no se confirmó un medio de contacto.</p>
           </div>
         ) : (
           <div className="prospect-privacy">

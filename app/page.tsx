@@ -6,6 +6,16 @@ import { supabase } from "@/lib/supabase";
 type Screen = "inicio" | "chat" | "academy" | "login" | "crm";
 type ExecutiveRole = "administrador" | "executive";
 type ExecutiveAccess = { id: string; fullName: string; role: ExecutiveRole };
+type PotentialUser = {
+  id: string;
+  leadId: string;
+  email: string;
+  accountStatus: "pending_verification" | "active" | "disabled";
+  createdAt: string;
+  leadName: string | null;
+  leadStatus: string | null;
+  advisorName: string | null;
+};
 
 const chatQuestions = [
   {
@@ -74,6 +84,14 @@ export default function Home() {
   const [consent, setConsent] = useState<"pending" | "accepted" | "declined">("pending");
   const [actionStatus, setActionStatus] = useState<"Pendiente" | "Aprobada" | "Rechazada">("Pendiente");
   const [showAllLeads, setShowAllLeads] = useState(false);
+  const [crmView, setCrmView] = useState<"leads" | "potential-users">("leads");
+  const [potentialUsers, setPotentialUsers] = useState<PotentialUser[]>([]);
+  const [potentialUsersLoading, setPotentialUsersLoading] = useState(false);
+  const [potentialUsersError, setPotentialUsersError] = useState<string | null>(null);
+  const [selectedPotentialLeadId, setSelectedPotentialLeadId] = useState("");
+  const [clientUpdateMessage, setClientUpdateMessage] = useState("");
+  const [clientUpdateLoading, setClientUpdateLoading] = useState(false);
+  const [clientUpdateStatus, setClientUpdateStatus] = useState<string | null>(null);
 
   const score = useMemo(() => (responses.length >= 5 ? 80 : 0), [responses]);
   const completedQuiz = quizAnswers.length === quiz.length;
@@ -102,11 +120,59 @@ export default function Home() {
     }
   }, []);
 
+  const loadPotentialUsers = useCallback(async () => {
+    setPotentialUsersLoading(true);
+    setPotentialUsersError(null);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error("Tu sesión expiró. Inicia sesión nuevamente.");
+      const response = await fetch("/api/crm/potential-users", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = (await response.json()) as { accounts?: PotentialUser[]; error?: string };
+      if (!response.ok) throw new Error(data.error || "No pudimos cargar los usuarios potenciales.");
+      setPotentialUsers(data.accounts ?? []);
+      setSelectedPotentialLeadId((current) => current || data.accounts?.[0]?.leadId || "");
+    } catch (error) {
+      setPotentialUsersError(error instanceof Error ? error.message : "No pudimos cargar los usuarios potenciales.");
+    } finally {
+      setPotentialUsersLoading(false);
+    }
+  }, []);
+
+  const publishClientUpdate = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const message = clientUpdateMessage.trim();
+    if (!selectedPotentialLeadId || !message || clientUpdateLoading) return;
+    setClientUpdateLoading(true);
+    setClientUpdateStatus(null);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error("Tu sesión expiró. Inicia sesión nuevamente.");
+      const response = await fetch("/api/crm/client-updates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ leadId: selectedPotentialLeadId, message }),
+      });
+      const data = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(data.error || "No pudimos publicar la novedad.");
+      setClientUpdateMessage("");
+      setClientUpdateStatus("Novedad publicada. El prospecto ya puede verla en Mi cuenta.");
+    } catch (error) {
+      setClientUpdateStatus(error instanceof Error ? error.message : "No pudimos publicar la novedad.");
+    } finally {
+      setClientUpdateLoading(false);
+    }
+  };
+
   useEffect(() => {
     const requestedScreen = new URLSearchParams(window.location.search).get("screen");
     const timer = window.setTimeout(() => {
       if (requestedScreen === "academy") {
-        setScreen("academy");
+        window.location.replace("/academy");
+        return;
       }
       if (requestedScreen === "crm") {
         setScreen("login");
@@ -151,6 +217,7 @@ export default function Home() {
     setConsent("pending");
     setActionStatus("Pendiente");
     setShowAllLeads(false);
+    setCrmView("leads");
     goTo("inicio");
   };
 
@@ -212,6 +279,7 @@ export default function Home() {
           <button className={screen === "chat" ? "active" : ""} onClick={() => goTo("chat")}>Orientación</button>
           <button className={screen === "academy" ? "active" : ""} onClick={() => goTo("academy")}>Academy</button>
         </div>
+        <a className="prospect-account-link" href="/mi-cuenta">Mi cuenta</a>
         <button className="small-cta" onClick={() => goTo(executiveAccess ? "crm" : "login")}>
           <Icon>▦</Icon> {executiveAccess ? "Ir al CRM" : "Acceso ejecutivo"}
         </button>
@@ -371,8 +439,19 @@ export default function Home() {
         <section className="crm-screen">
           <header className="crm-header"><div><p className="eyebrow">VISTA PRIVADA · CRM · {executiveLabel}</p><h1>{isAdmin ? "Panel del equipo" : `Buenos días, ${executiveFirstName}`}</h1><p>{isAdmin ? "Supervisa oportunidades, equipo y decisiones comerciales." : "Estas son tus oportunidades y acciones pendientes."}</p></div><div className="crm-actions"><button className="search-button">⌕ Buscar</button><button className="search-button" onClick={handleLogout}>Cerrar sesión</button><button className="profile-avatar">{executiveInitials}</button></div></header>
           <div className="metric-grid">{isAdmin ? <><Metric value="12" label="Leads nuevos" trend="+3 esta semana" /><Metric value="4" label="Prioridad alta" trend="Requieren atención" accent="orange" /><Metric value="3" label="Acciones pendientes" trend="Por revisar hoy" accent="blue" /><Metric value="4" label="Ejecutivos activos" trend="Equipo comercial" accent="green" /></> : <><Metric value="3" label="Mis leads" trend="Asignados a ti" /><Metric value="1" label="Prioridad alta" trend="Requiere atención" accent="orange" /><Metric value="2" label="Acciones pendientes" trend="Por revisar hoy" accent="blue" /><Metric value="68%" label="Ruta educativa" trend="Tasa de finalización" accent="green" /></>}</div>
+          <div className="crm-view-switch" aria-label="Secciones del CRM">
+            <button className={crmView === "leads" ? "active" : ""} onClick={() => setCrmView("leads")}>Oportunidades</button>
+            <button className={crmView === "potential-users" ? "active" : ""} onClick={() => { setCrmView("potential-users"); void loadPotentialUsers(); }}>Usuarios potenciales</button>
+          </div>
           {isAdmin && <section className="admin-control-card"><div><p className="eyebrow">ADMINISTRACIÓN</p><h2>Control del equipo comercial</h2><p>Como administrador puedes revisar la carga de trabajo, asignar responsables y supervisar las acciones aprobadas.</p></div><button className="outline-button">Gestionar equipo</button></section>}
-          <div className="crm-layout">
+          {crmView === "potential-users" && (
+            <section className="potential-users-card">
+              <div className="leads-heading"><div><h2>Usuarios potenciales</h2><p>Cuentas creadas por prospectos para recibir novedades de su asesoría.</p></div><button className="filter-button" onClick={() => void loadPotentialUsers()}>Actualizar</button></div>
+              {potentialUsers.length > 0 && <form className="client-update-form" onSubmit={publishClientUpdate}><label>Destinatario<select value={selectedPotentialLeadId} onChange={(event) => setSelectedPotentialLeadId(event.target.value)}>{potentialUsers.map((account) => <option key={account.id} value={account.leadId}>{account.leadName || account.email} · {account.email}</option>)}</select></label><label>Mensaje para el prospecto<textarea value={clientUpdateMessage} onChange={(event) => setClientUpdateMessage(event.target.value)} maxLength={2000} placeholder="Ej.: Revisamos tu orientación y te escribiremos mañana para coordinar una reunión." required /></label>{clientUpdateStatus && <p className={clientUpdateStatus.startsWith("Novedad") ? "client-update-success" : "auth-error"}>{clientUpdateStatus}</p>}<button className="primary-button" disabled={clientUpdateLoading}>{clientUpdateLoading ? "Publicando…" : "Publicar novedad"}</button></form>}
+              {potentialUsersLoading ? <p className="more-leads">Cargando usuarios potenciales…</p> : potentialUsersError ? <p className="auth-error">{potentialUsersError}</p> : potentialUsers.length ? <div className="potential-user-list">{potentialUsers.map((account) => <article key={account.id} className="potential-user-row"><span className="avatar">{(account.leadName || account.email).slice(0, 2).toUpperCase()}</span><div><b>{account.leadName || "Prospecto"}</b><small>{account.email}</small></div><span className={`account-status ${account.accountStatus}`}>{account.accountStatus === "active" ? "Cuenta activa" : account.accountStatus === "pending_verification" ? "Por verificar" : "Deshabilitada"}</span><div><small>ASESOR</small><p>{account.advisorName || "Sin asignar"}</p></div><div><small>LEAD</small><p>{account.leadStatus || "nuevo"}</p></div></article>)}</div> : <p className="more-leads">Aún no hay prospectos con cuenta de seguimiento.</p>}
+            </section>
+          )}
+          <div className={`crm-layout ${crmView !== "leads" ? "crm-view-hidden" : ""}`}>
             <div className="leads-area">
               <div className="leads-heading"><div><h2>{isAdmin ? "Oportunidades del equipo" : "Mis oportunidades"}</h2><p>{isAdmin ? "Visión completa del embudo" : "Leads asignados a tu cartera"}</p></div>{isAdmin && <button className="filter-button">☷ Filtrar</button>}</div>
               <div className="pipeline-tabs"><button className="active">{isAdmin ? "Todos" : "Asignados"} <span>{isAdmin ? 12 : 3}</span></button><button>Nuevos <span>{isAdmin ? 5 : 1}</span></button><button>Calificados <span>{isAdmin ? 4 : 2}</span></button>{isAdmin && <button>En seguimiento <span>3</span></button>}</div>
