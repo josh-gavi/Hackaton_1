@@ -247,7 +247,12 @@ export default function Home() {
     setEmail("");
     setPassword("");
     setExecutiveAccess(access);
-    goTo("crm");
+    // setExecutiveAccess se actualiza en el siguiente render. Ir mediante
+    // goTo("crm") aquí todavía vería el valor anterior (null) y devolvería
+    // al formulario de acceso. La sesión ya fue validada en el servidor,
+    // así que abrimos directamente el dashboard correspondiente al rol.
+    setScreen("crm");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleLogout = async () => {
