@@ -301,7 +301,7 @@ export default function Home() {
             <p className="hero-text">Nexo Futuro acompaña a cada persona desde su primera pregunta hasta la orientación adecuada, sin perder el contexto en el camino.</p>
             <div className="hero-actions">
               <button className="primary-button" onClick={() => goTo("chat")}>Comenzar mi orientación <span>→</span></button>
-              <button className="text-button" onClick={() => goTo("crm")}>Ver CRM de ejemplo <span>↗</span></button>
+              <button className="text-button" onClick={() => goTo("academy")}>Conocer Futuro Academy <span>↗</span></button>
             </div>
             <div className="trust-row">
               <div className="avatars"><i>J</i><i>M</i><i>A</i><i>R</i></div>

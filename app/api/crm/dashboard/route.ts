@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
 
   let leadsQuery = access.supabase
     .from("leads")
-    .select("id, assigned_user_id, full_name, email, company, lead_type, objective, experience, budget, urgency_label, lead_score, status, created_at")
+    .select("id, assigned_user_id, full_name, email, company, company_size, decision_role, lead_type, objective, experience, budget, urgency_label, lead_score, status, created_at")
     .order("lead_score", { ascending: false })
     .order("created_at", { ascending: false });
   if (access.user.role === "executive") leadsQuery = leadsQuery.eq("assigned_user_id", access.user.id);
